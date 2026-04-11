@@ -6,7 +6,7 @@
     <title>电影时长质检仪</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎥</text></svg>">
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --bg: #f4f7f6; --tmdb-blue: #01b4e4; --douban-green: #00b51d; --accent: #e67e22; }
+        :root { --primary: #3498db; --dark: #2c3e50; --bg: #f4f7f6; --tmdb-blue: #01b4e4; --douban-green: #00b51d; --imdb-yellow: #f5c518; --accent: #e67e22; }
         body { font-family: "Microsoft YaHei", -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
         .container { max-width: 800px; margin: 40px auto; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
         
@@ -29,17 +29,20 @@
         .title { font-size: 28px; font-weight: 800; color: var(--dark); margin: 0; letter-spacing: -0.5px; }
         .meta { color: #95a5a6; font-size: 14px; margin-top: 5px; }
         
-        .badge-group { margin: 15px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .badge-group { margin: 15px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .score-tag { background: #f1c40f; color: #fff; padding: 4px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; }
         .rating-tag { border: 2px solid var(--accent); color: var(--accent); padding: 2px 10px; border-radius: 8px; font-size: 14px; font-weight: bold; }
         
-        .douban-btn { 
-            display: inline-flex; align-items: center; gap: 6px;
-            background: var(--douban-green); color: white; 
-            text-decoration: none; padding: 6px 15px; border-radius: 8px; 
-            font-size: 13px; font-weight: bold; transition: 0.3s;
+        .btn-link { 
+            display: inline-flex; align-items: center; gap: 5px;
+            text-decoration: none; padding: 6px 12px; border-radius: 8px; 
+            font-size: 12px; font-weight: bold; transition: 0.3s;
         }
+        .douban-btn { background: var(--douban-green); color: white; }
         .douban-btn:hover { background: #008e17; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,181,29,0.3); }
+        
+        .imdb-btn { background: #333; color: var(--imdb-yellow); border: 1px solid #444; }
+        .imdb-btn:hover { background: #000; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
 
         .runtime-box { background: linear-gradient(135deg, #ebf5fb 0%, #e1f0fa 100%); padding: 18px; border-radius: 15px; border-left: 6px solid var(--tmdb-blue); margin: 20px 0; }
         .runtime-text { font-size: 24px; font-weight: 900; color: var(--tmdb-blue); }
@@ -143,8 +146,9 @@
             const m = d.runtime % 60;
             const year = d.release_date?.split('-')[0] || '';
             
-            // --- 重新优化跳转逻辑：精准拼接片名与年份 ---
+            // 链接拼接
             const doubanLink = `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(d.title + ' ' + year)}&cat=1002`;
+            const imdbGuideLink = d.imdb_id ? `https://www.imdb.com/title/${d.imdb_id}/parentalguide` : `https://www.imdb.com/find?q=${encodeURIComponent(d.original_title)}`;
 
             let cert = "NR";
             try {
@@ -164,9 +168,13 @@
                         <div class="badge-group">
                             <span class="score-tag">⭐ ${d.vote_average.toFixed(1)}</span>
                             <span class="rating-tag">分级：${cert}</span>
-                            <a href="${doubanLink}" target="_blank" class="douban-btn" title="在豆瓣中搜索该电影">
-                                <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#00b51d"/><path d="M11 6.5h2v1h-2v-1zm4 1h-6v1h6v-1zm-6 3h6v1h-6v-1zm1 4.5h-2.5v1h1v1.5h-1v1h4v-1h-1v-1.5h1.5l1.5-1.5v-1h-3.5v1h1.5l-1 1zm-3-3v1h8v-1h-8z" fill="#fff"/></svg>
-                                豆瓣搜索
+                            <a href="${doubanLink}" target="_blank" class="btn-link douban-btn">
+                                <svg width="12" height="12" viewBox="0 0 24 24"><path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#fff" opacity="0.2"/><path d="M11 6.5h2v1h-2v-1zm4 1h-6v1h6v-1zm-6 3h6v1h-6v-1zm1 4.5h-2.5v1h1v1.5h-1v1h4v-1h-1v-1.5h1.5l1.5-1.5v-1h-3.5v1h1.5l-1 1zm-3-3v1h8v-1h-8z" fill="#fff"/></svg>
+                                豆瓣
+                            </a>
+                            <a href="${imdbGuideLink}" target="_blank" class="btn-link imdb-btn">
+                                <span style="background:var(--imdb-yellow); color:#000; padding:0 3px; border-radius:2px; font-size:10px; margin-right:3px;">IMDb</span>
+                                内容质检
                             </a>
                         </div>
                         <div class="runtime-box">
