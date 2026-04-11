@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电影时长质检仪</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎥</text></svg>">
+    <style>
+        :root { --primary: #3498db; --dark: #2c3e50; --bg: #f4f7f6; --tmdb-blue: #01b4e4; --accent: #e67e22; }
+        body { font-family: "Microsoft YaHei", -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
+        .container { max-width: 800px; margin: 40px auto; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        
+        /* 搜索区域 */
+        .search-box { display: flex; gap: 10px; margin-bottom: 25px; position: sticky; top: 0; background: white; padding: 5px 0; z-index: 10; }
+        input { flex: 1; padding: 15px; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; }
+        input:focus { border-color: var(--tmdb-blue); box-shadow: 0 0 0 4px rgba(1, 180, 228, 0.1); }
+        
+        .paste-btn { padding: 0 15px; background: #fff; color: var(--tmdb-blue); border: 2px solid var(--tmdb-blue); border-radius: 12px; cursor: pointer; font-size: 20px; transition: 0.3s; }
+        .paste-btn:hover { background: var(--tmdb-blue); color: white; }
+        .search-btn { padding: 0 25px; background: var(--tmdb-blue); color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 16px; font-weight: bold; }
+
+        /* 结果展示卡片 */
+        .movie-card { display: flex; gap: 25px; margin-bottom: 25px; flex-wrap: wrap; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .poster-box { flex-shrink: 0; cursor: pointer; border-radius: 15px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.15); width: 220px; transition: 0.3s; }
+        .poster-box:hover { transform: scale(1.03); box-shadow: 0 12px 25px rgba(0,0,0,0.2); }
+        .poster { width: 100%; height: auto; display: block; }
+
+        .info { flex: 1; min-width: 300px; }
+        .title { font-size: 28px; font-weight: 800; color: var(--dark); margin: 0; letter-spacing: -0.5px; }
+        .meta { color: #95a5a6; font-size: 14px; margin-top: 5px; }
+        
+        .badge-group { margin: 15px 0; display: flex; gap: 10px; }
+        .score-tag { background: #f1c40f; color: #fff; padding: 4px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; }
+        .rating-tag { border: 2px solid var(--accent); color: var(--accent); padding: 2px 10px; border-radius: 8px; font-size: 14px; font-weight: bold; }
+        
+        .runtime-box { background: linear-gradient(135deg, #ebf5fb 0%, #e1f0fa 100%); padding: 18px; border-radius: 15px; border-left: 6px solid var(--tmdb-blue); margin: 20px 0; }
+        .runtime-text { font-size: 24px; font-weight: 900; color: var(--tmdb-blue); }
+        
+        .overview { font-size: 15px; line-height: 1.7; color: #555; background: #f9f9f9; padding: 15px; border-radius: 12px; }
+
+        /* 演员列表 */
+        .cast-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 15px; margin-top: 15px; }
+        .cast-item a { text-decoration: none; color: inherit; display: block; transition: 0.3s; }
+        .cast-item a:hover { transform: translateY(-5px); }
+        .cast-img { width: 100%; height: 150px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 8px; border: 2px solid transparent; }
+        .cast-item a:hover .cast-img { border-color: var(--tmdb-blue); }
+        .cast-name { font-size: 13px; font-weight: bold; display: block; }
+        .cast-role { font-size: 11px; color: #999; }
+
+        /* 设置按钮 */
+        .settings-link { text-align: right; margin-top: 30px; font-size: 12px; color: #ccc; }
+        .settings-link span { cursor: pointer; text-decoration: underline; }
+
+        @media (max-width: 600px) { .poster-box { width: 100%; } .search-box { flex-wrap: wrap; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="search-box">
+        <input type="text" id="movieName" placeholder="粘贴电影标题或输入片名..." autocomplete="off">
+        <button class="paste-btn" onclick="handlePaste()" title="粘贴并搜索">📋</button>
+        <button class="search-btn" onclick="searchMovie()">核查</button>
+    </div>
+    <div id="result" style="color:#bbb; text-align:center; padding: 40px 0;">等待输入，开启高效质检之旅...</div>
+    
+    <div class="settings-link">
+        <span onclick="resetToken()">重置 API TOKEN</span>
+    </div>
+</div>
+
+<script>
+    // --- 核心安全逻辑：本地存储 TOKEN ---
+    let TOKEN = localStorage.getItem('tmdb_access_token');
+
+    window.onload = function() {
+        if (!TOKEN) {
+            askForToken();
+        }
+        document.getElementById('movieName').focus();
+    };
+
+    function askForToken() {
+        const input = prompt("请输入您的 TMDB API TOKEN (Read Access Token):\n\n此操作仅需一次，TOKEN 将保存在浏览器本地缓存中。");
+        if (input && input.trim().length > 50) {
+            localStorage.setItem('tmdb_access_token', input.trim());
+            TOKEN = input.trim();
+            location.reload();
+        } else if (input !== null) {
+            alert("输入的 TOKEN 似乎不完整，请重新输入。");
+            askForToken();
+        }
+    }
+
+    function resetToken() {
+        if(confirm("确定要清除保存的 API TOKEN 吗？")) {
+            localStorage.removeItem('tmdb_access_token');
+            location.reload();
+        }
+    }
+
+    // --- 业务逻辑 ---
+    async function handlePaste() {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) { 
+                document.getElementById('movieName').value = text; 
+                searchMovie(); 
+            }
+        } catch (e) {
+            alert("无法访问剪贴板。请确保使用 HTTPS 访问，或检查浏览器权限。");
+        }
+    }
+
+    async function searchMovie() {
+        if (!TOKEN) { askForToken(); return; }
+        const resultDiv = document.getElementById('result');
+        const inputVal = document.getElementById('movieName').value.trim();
+        if (!inputVal) return;
+
+        resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在为您检索官方原始档案...</div>";
+
+        try {
+            let cleanInput = inputVal.replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+            let yearMatch = cleanInput.match(/\b(19|20)\d{2}$/);
+            let titleQuery = yearMatch ? cleanInput.replace(yearMatch[0], "").trim() : cleanInput;
+            let yearQuery = yearMatch ? `&primary_release_year=${yearMatch[0]}` : "";
+
+            const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(titleQuery)}${yearQuery}&language=zh-CN`, { 
+                headers: { 'Authorization': `Bearer ${TOKEN}` } 
+            });
+            const sData = await sRes.json();
+            
+            if (sData.status_code === 7) { 
+                alert("TOKEN 无效，请检查。"); 
+                resetToken(); 
+                return; 
+            }
+
+            if (!sData.results || !sData.results.length) { 
+                resultDiv.innerHTML = "❌ 未找到该影片，请微调关键词"; 
+                return; 
+            }
+
+            const movie = sData.results[0];
+            const dRes = await fetch(`https://api.themoviedb.org/3/movie/${movie.id}?language=zh-CN&append_to_response=release_dates,credits`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const d = await dRes.json();
+
+            const h = Math.floor(d.runtime / 60);
+            const m = d.runtime % 60;
+            let cert = "NR";
+            try {
+                const rs = d.release_dates.results;
+                const target = rs.find(r => r.iso_3166_1 === 'CN') || rs.find(r => r.iso_3166_1 === 'US') || rs[0];
+                cert = target.release_dates.find(date => date.certification !== "")?.certification || "NR";
+            } catch (e) {}
+
+            resultDiv.innerHTML = `
+                <div class="movie-card">
+                    <a href="https://www.themoviedb.org/movie/${d.id}?language=zh-CN" target="_blank" class="poster-box" title="点击查看 TMDB 详情">
+                        <img src="${d.poster_path ? 'https://image.tmdb.org/t/p/w500'+d.poster_path : 'https://via.placeholder.com/500x750'}" class="poster">
+                    </a>
+                    <div class="info">
+                        <div class="title">${d.title}</div>
+                        <div class="meta">${d.original_title} · ${d.release_date?.split('-')[0] || '未知'}</div>
+                        <div class="badge-group">
+                            <span class="score-tag">⭐ ${d.vote_average.toFixed(1)}</span>
+                            <span class="rating-tag">分级：${cert}</span>
+                        </div>
+                        <div class="runtime-box">
+                            <span style="font-size:12px; color:#7f8c8d; font-weight:bold;">官方核定原始时长</span><br>
+                            <span class="runtime-text">${h} 小时 ${m} 分钟</span>
+                            <span style="font-size:15px; color:#95a5a6;"> (${d.runtime} min)</span>
+                        </div>
+                        <div class="overview"><strong>剧情大纲：</strong><br>${d.overview || '暂无详细记载。'}</div>
+                    </div>
+                </div>
+                <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px;">🎬 主要演职人员 (点击可查看详情)</div>
+                <div class="cast-list">${(d.credits.cast || []).slice(0, 6).map(p => `
+                    <div class="cast-item">
+                        <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
+                            <img src="${p.profile_path ? 'https://image.tmdb.org/t/p/w185'+p.profile_path : 'https://via.placeholder.com/185x278'}" class="cast-img">
+                            <span class="cast-name">${p.name}</span>
+                            <span class="cast-role">${p.character || 'Cast'}</span>
+                        </a>
+                    </div>
+                `).join('')}</div>
+            `;
+        } catch (err) { 
+            resultDiv.innerHTML = `⚠️ 服务通讯异常，请检查网络或 TOKEN`; 
+        }
+    }
+    document.getElementById('movieName').onkeypress = (e) => { if (e.keyCode === 13) searchMovie(); };
+</script>
+</body>
+</html>
