@@ -6,11 +6,10 @@
     <title>电影时长质检仪</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎥</text></svg>">
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --bg: #f4f7f6; --tmdb-blue: #01b4e4; --accent: #e67e22; }
+        :root { --primary: #3498db; --dark: #2c3e50; --bg: #f4f7f6; --tmdb-blue: #01b4e4; --douban-green: #00b51d; --accent: #e67e22; }
         body { font-family: "Microsoft YaHei", -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
         .container { max-width: 800px; margin: 40px auto; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
         
-        /* 搜索区域 */
         .search-box { display: flex; gap: 10px; margin-bottom: 25px; position: sticky; top: 0; background: white; padding: 5px 0; z-index: 10; }
         input { flex: 1; padding: 15px; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; }
         input:focus { border-color: var(--tmdb-blue); box-shadow: 0 0 0 4px rgba(1, 180, 228, 0.1); }
@@ -19,7 +18,6 @@
         .paste-btn:hover { background: var(--tmdb-blue); color: white; }
         .search-btn { padding: 0 25px; background: var(--tmdb-blue); color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 16px; font-weight: bold; }
 
-        /* 结果展示卡片 */
         .movie-card { display: flex; gap: 25px; margin-bottom: 25px; flex-wrap: wrap; animation: fadeIn 0.5s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -31,16 +29,23 @@
         .title { font-size: 28px; font-weight: 800; color: var(--dark); margin: 0; letter-spacing: -0.5px; }
         .meta { color: #95a5a6; font-size: 14px; margin-top: 5px; }
         
-        .badge-group { margin: 15px 0; display: flex; gap: 10px; }
+        .badge-group { margin: 15px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .score-tag { background: #f1c40f; color: #fff; padding: 4px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; }
         .rating-tag { border: 2px solid var(--accent); color: var(--accent); padding: 2px 10px; border-radius: 8px; font-size: 14px; font-weight: bold; }
         
+        .douban-btn { 
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--douban-green); color: white; 
+            text-decoration: none; padding: 6px 15px; border-radius: 8px; 
+            font-size: 13px; font-weight: bold; transition: 0.3s;
+        }
+        .douban-btn:hover { background: #008e17; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,181,29,0.3); }
+
         .runtime-box { background: linear-gradient(135deg, #ebf5fb 0%, #e1f0fa 100%); padding: 18px; border-radius: 15px; border-left: 6px solid var(--tmdb-blue); margin: 20px 0; }
         .runtime-text { font-size: 24px; font-weight: 900; color: var(--tmdb-blue); }
         
         .overview { font-size: 15px; line-height: 1.7; color: #555; background: #f9f9f9; padding: 15px; border-radius: 12px; }
 
-        /* 演员列表 */
         .cast-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 15px; margin-top: 15px; }
         .cast-item a { text-decoration: none; color: inherit; display: block; transition: 0.3s; }
         .cast-item a:hover { transform: translateY(-5px); }
@@ -49,7 +54,6 @@
         .cast-name { font-size: 13px; font-weight: bold; display: block; }
         .cast-role { font-size: 11px; color: #999; }
 
-        /* 设置按钮 */
         .settings-link { text-align: right; margin-top: 30px; font-size: 12px; color: #ccc; }
         .settings-link span { cursor: pointer; text-decoration: underline; }
 
@@ -72,25 +76,19 @@
 </div>
 
 <script>
-    // --- 核心安全逻辑：本地存储 TOKEN ---
     let TOKEN = localStorage.getItem('tmdb_access_token');
 
     window.onload = function() {
-        if (!TOKEN) {
-            askForToken();
-        }
+        if (!TOKEN) askForToken();
         document.getElementById('movieName').focus();
     };
 
     function askForToken() {
-        const input = prompt("请输入您的 TMDB API TOKEN (Read Access Token):\n\n此操作仅需一次，TOKEN 将保存在浏览器本地缓存中。");
+        const input = prompt("请输入您的 TMDB API TOKEN (Read Access Token):");
         if (input && input.trim().length > 50) {
             localStorage.setItem('tmdb_access_token', input.trim());
             TOKEN = input.trim();
             location.reload();
-        } else if (input !== null) {
-            alert("输入的 TOKEN 似乎不完整，请重新输入。");
-            askForToken();
         }
     }
 
@@ -101,7 +99,6 @@
         }
     }
 
-    // --- 业务逻辑 ---
     async function handlePaste() {
         try {
             const text = await navigator.clipboard.readText();
@@ -109,9 +106,7 @@
                 document.getElementById('movieName').value = text; 
                 searchMovie(); 
             }
-        } catch (e) {
-            alert("无法访问剪贴板。请确保使用 HTTPS 访问，或检查浏览器权限。");
-        }
+        } catch (e) { alert("无法访问剪贴板。"); }
     }
 
     async function searchMovie() {
@@ -133,13 +128,7 @@
             });
             const sData = await sRes.json();
             
-            if (sData.status_code === 7) { 
-                alert("TOKEN 无效，请检查。"); 
-                resetToken(); 
-                return; 
-            }
-
-            if (!sData.results || !sData.results.length) { 
+            if (!sData.results?.length) { 
                 resultDiv.innerHTML = "❌ 未找到该影片，请微调关键词"; 
                 return; 
             }
@@ -152,6 +141,11 @@
 
             const h = Math.floor(d.runtime / 60);
             const m = d.runtime % 60;
+            const year = d.release_date?.split('-')[0] || '';
+            
+            // --- 核心优化：改用更稳定的电影类目搜索接口 ---
+            const doubanLink = `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(d.title)}&cat=1002`;
+
             let cert = "NR";
             try {
                 const rs = d.release_dates.results;
@@ -166,10 +160,14 @@
                     </a>
                     <div class="info">
                         <div class="title">${d.title}</div>
-                        <div class="meta">${d.original_title} · ${d.release_date?.split('-')[0] || '未知'}</div>
+                        <div class="meta">${d.original_title} · ${year || '未知'}</div>
                         <div class="badge-group">
                             <span class="score-tag">⭐ ${d.vote_average.toFixed(1)}</span>
                             <span class="rating-tag">分级：${cert}</span>
+                            <a href="${doubanLink}" target="_blank" class="douban-btn" title="在豆瓣中搜索该电影">
+                                <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#00b51d"/><path d="M11 6.5h2v1h-2v-1zm4 1h-6v1h6v-1zm-6 3h6v1h-6v-1zm1 4.5h-2.5v1h1v1.5h-1v1h4v-1h-1v-1.5h1.5l1.5-1.5v-1h-3.5v1h1.5l-1 1zm-3-3v1h8v-1h-8z" fill="#fff"/></svg>
+                                豆瓣搜索
+                            </a>
                         </div>
                         <div class="runtime-box">
                             <span style="font-size:12px; color:#7f8c8d; font-weight:bold;">官方核定原始时长</span><br>
@@ -179,7 +177,7 @@
                         <div class="overview"><strong>剧情大纲：</strong><br>${d.overview || '暂无详细记载。'}</div>
                     </div>
                 </div>
-                <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px;">🎬 主要演职人员 (点击可查看详情)</div>
+                <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px;">🎬 主要演职人员</div>
                 <div class="cast-list">${(d.credits.cast || []).slice(0, 6).map(p => `
                     <div class="cast-item">
                         <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
@@ -190,9 +188,7 @@
                     </div>
                 `).join('')}</div>
             `;
-        } catch (err) { 
-            resultDiv.innerHTML = `⚠️ 服务通讯异常，请检查网络或 TOKEN`; 
-        }
+        } catch (err) { resultDiv.innerHTML = `⚠️ 检索失败`; }
     }
     document.getElementById('movieName').onkeypress = (e) => { if (e.keyCode === 13) searchMovie(); };
 </script>
