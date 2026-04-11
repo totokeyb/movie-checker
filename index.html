@@ -143,8 +143,8 @@
             const m = d.runtime % 60;
             const year = d.release_date?.split('-')[0] || '';
             
-            // --- 核心优化：改用更稳定的电影类目搜索接口 ---
-            const doubanLink = `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(d.title)}&cat=1002`;
+            // --- 重新优化跳转逻辑：精准拼接片名与年份 ---
+            const doubanLink = `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(d.title + ' ' + year)}&cat=1002`;
 
             let cert = "NR";
             try {
