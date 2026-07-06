@@ -6,14 +6,34 @@
     <title>电影时长质检仪</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎥</text></svg>">
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --bg: #f4f7f6; --tmdb-blue: #01b4e4; --douban-green: #00b51d; --imdb-yellow: #f5c518; --accent: #e67e22; }
-        body { font-family: "Microsoft YaHei", -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
-        .container { max-width: 800px; margin: 40px auto; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
-        
+        :root { --primary: #3498db; --dark: #2c3e50; --bg: #eef2f4; --tmdb-blue: #01b4e4; --douban-green: #00b51d; --accent: #e67e22; --panel: #1c2b3a; --panel-2: #24374a; --readout: #5be3ff; --mono: 'SF Mono', 'JetBrains Mono', Consolas, Menlo, monospace; }
+        body {
+            font-family: "Microsoft YaHei", -apple-system, sans-serif;
+            margin: 0; padding: 15px; color: #333;
+            min-height: 100vh;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 12% 8%, rgba(1,180,228,0.10) 0%, transparent 45%),
+                radial-gradient(circle at 88% 92%, rgba(230,126,34,0.08) 0%, transparent 45%),
+                linear-gradient(rgba(44,62,80,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(44,62,80,0.05) 1px, transparent 1px);
+            background-size: auto, auto, 28px 28px, 28px 28px;
+            background-attachment: fixed;
+        }
+        .container { max-width: 800px; margin: 40px auto; background: white; padding: 34px 30px 30px; border-radius: 20px; box-shadow: 0 20px 50px rgba(28,43,58,0.12), 0 2px 8px rgba(28,43,58,0.06); position: relative; overflow: hidden; }
+        /* 胶片齿孔装饰条：呼应“电影”这个主题，而不是随便加一条彩色色带 */
+        .container::before {
+            content: ""; position: absolute; top: 0; left: 0; right: 0; height: 10px;
+            background-color: #232f3a;
+            background-image: radial-gradient(circle, var(--bg) 2.2px, transparent 2.3px);
+            background-size: 18px 10px;
+            background-position: 9px center;
+        }
+
         .search-box { display: flex; gap: 10px; margin-bottom: 25px; position: sticky; top: 0; background: white; padding: 5px 0; z-index: 10; }
         input { flex: 1; padding: 15px; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; }
         input:focus { border-color: var(--tmdb-blue); box-shadow: 0 0 0 4px rgba(1, 180, 228, 0.1); }
-        
+
         .paste-btn { padding: 0 15px; background: #fff; color: var(--tmdb-blue); border: 2px solid var(--tmdb-blue); border-radius: 12px; cursor: pointer; font-size: 20px; transition: 0.3s; }
         .paste-btn:hover { background: var(--tmdb-blue); color: white; }
         .search-btn { padding: 0 25px; background: var(--tmdb-blue); color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 16px; font-weight: bold; }
@@ -28,37 +48,69 @@
         .info { flex: 1; min-width: 300px; }
         .title { font-size: 28px; font-weight: 800; color: var(--dark); margin: 0; letter-spacing: -0.5px; }
         .meta { color: #95a5a6; font-size: 14px; margin-top: 5px; }
-        
-        .badge-group { margin: 15px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .director-line { color: #7f8c8d; font-size: 13px; margin-top: 6px; }
+        .director-line b { color: #5a6b7a; }
+
+        .genre-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+        .genre-tag { background: #eef2f5; color: #5a6b7a; padding: 3px 11px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+
+        .badge-group { margin: 15px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .score-tag { background: #f1c40f; color: #fff; padding: 4px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; }
         .rating-tag { border: 2px solid var(--accent); color: var(--accent); padding: 2px 10px; border-radius: 8px; font-size: 14px; font-weight: bold; }
-        
-        .btn-link { 
-            display: inline-flex; align-items: center; gap: 5px;
-            text-decoration: none; padding: 6px 12px; border-radius: 8px; 
-            font-size: 12px; font-weight: bold; transition: 0.3s;
-        }
-        .douban-btn { background: var(--douban-green); color: white; }
-        .douban-btn:hover { background: #008e17; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,181,29,0.3); }
-        
-        .imdb-btn { background: #333; color: var(--imdb-yellow); border: 1px solid #444; }
-        .imdb-btn:hover { background: #000; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
 
-        .runtime-box { background: linear-gradient(135deg, #ebf5fb 0%, #e1f0fa 100%); padding: 18px; border-radius: 15px; border-left: 6px solid var(--tmdb-blue); margin: 20px 0; }
-        .runtime-text { font-size: 24px; font-weight: 900; color: var(--tmdb-blue); }
-        
+        .douban-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--douban-green); color: white;
+            text-decoration: none; padding: 6px 15px; border-radius: 8px;
+            font-size: 13px; font-weight: bold; transition: 0.3s;
+        }
+        .douban-btn:hover { background: #008e17; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,181,29,0.3); }
+
+        /* --- 片长仪表读数面板：呼应“质检仪”这个定位，数字用等宽字体呈现测量感 --- */
+        .runtime-panel {
+            background: linear-gradient(150deg, var(--panel) 0%, var(--panel-2) 100%);
+            border-radius: 14px; padding: 18px 22px; margin: 20px 0;
+            display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+        }
+        .runtime-label { font-size: 11px; letter-spacing: 1.5px; color: #7fa8c9; text-transform: uppercase; font-weight: 700; flex-basis: 100%; }
+        .runtime-readout { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--readout); letter-spacing: 0.5px; text-shadow: 0 0 18px rgba(91,227,255,0.35); }
+        .runtime-sub { font-family: var(--mono); font-size: 13px; color: #8ea6ba; }
+
         .overview { font-size: 15px; line-height: 1.7; color: #555; background: #f9f9f9; padding: 15px; border-radius: 12px; }
 
         .cast-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 15px; margin-top: 15px; }
+        .cast-list .cast-item:nth-child(n+7) { display: none; }
+        .cast-list.expanded .cast-item:nth-child(n+7) { display: block; }
         .cast-item a { text-decoration: none; color: inherit; display: block; transition: 0.3s; }
         .cast-item a:hover { transform: translateY(-5px); }
         .cast-img { width: 100%; height: 150px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 8px; border: 2px solid transparent; }
         .cast-item a:hover .cast-img { border-color: var(--tmdb-blue); }
         .cast-name { font-size: 13px; font-weight: bold; display: block; }
         .cast-role { font-size: 11px; color: #999; }
+        .cast-toggle { text-align: center; margin-top: 14px; }
+        .cast-toggle button {
+            background: none; border: 1px solid #e0e6ea; padding: 6px 18px; border-radius: 20px;
+            font-size: 12px; color: #7f95a8; cursor: pointer; transition: 0.2s; font-family: inherit;
+        }
+        .cast-toggle button:hover { border-color: var(--tmdb-blue); color: var(--tmdb-blue); }
 
         .settings-link { text-align: right; margin-top: 30px; font-size: 12px; color: #ccc; }
         .settings-link span { cursor: pointer; text-decoration: underline; }
+
+        /* --- 候选结果列表 --- */
+        .candidate-header { font-weight: bold; color: #7f8c8d; margin-bottom: 15px; font-size: 14px; }
+        .candidate-list { display: flex; flex-direction: column; gap: 10px; }
+        .candidate-item {
+            display: flex; gap: 15px; align-items: center; padding: 10px;
+            border: 2px solid #eee; border-radius: 12px; cursor: pointer; transition: 0.2s; text-align: left;
+        }
+        .candidate-item:hover { border-color: var(--tmdb-blue); background: #f5fbfe; }
+        .candidate-img { width: 55px; height: 82px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: #eee; }
+        .candidate-info { flex: 1; min-width: 0; }
+        .candidate-title { font-weight: bold; font-size: 16px; color: var(--dark); }
+        .candidate-meta { font-size: 12px; color: #95a5a6; margin: 2px 0 4px; }
+        .candidate-overview { font-size: 12px; color: #888; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .back-link { display: inline-block; margin-bottom: 15px; font-size: 13px; color: var(--tmdb-blue); cursor: pointer; text-decoration: underline; }
 
         @media (max-width: 600px) { .poster-box { width: 100%; } .search-box { flex-wrap: wrap; } }
     </style>
@@ -72,7 +124,7 @@
         <button class="search-btn" onclick="searchMovie()">核查</button>
     </div>
     <div id="result" style="color:#bbb; text-align:center; padding: 40px 0;">等待输入，开启高效质检之旅...</div>
-    
+
     <div class="settings-link">
         <span onclick="resetToken()">重置 API TOKEN</span>
     </div>
@@ -80,6 +132,14 @@
 
 <script>
     let TOKEN = localStorage.getItem('tmdb_access_token');
+
+    // 轻量状态容器：把原来散落的 lastResults 全局变量收拢到一起，
+    // 方便以后加收藏/历史记录之类的功能时有地方挂钩，
+    // 但不引入完整状态机——这个工具的交互路径还是线性的，不值得上重架构。
+    const app = {
+        candidates: [],      // 当前这次搜索的候选影片列表
+        selectedMovie: null  // 当前展示详情的影片（规范化后的数据）
+    };
 
     window.onload = function() {
         if (!TOKEN) askForToken();
@@ -105,13 +165,14 @@
     async function handlePaste() {
         try {
             const text = await navigator.clipboard.readText();
-            if (text) { 
-                document.getElementById('movieName').value = text; 
-                searchMovie(); 
+            if (text) {
+                document.getElementById('movieName').value = text;
+                searchMovie();
             }
         } catch (e) { alert("无法访问剪贴板。"); }
     }
 
+    // 第一步：搜索，拿到候选列表
     async function searchMovie() {
         if (!TOKEN) { askForToken(); return; }
         const resultDiv = document.getElementById('result');
@@ -126,78 +187,183 @@
             let titleQuery = yearMatch ? cleanInput.replace(yearMatch[0], "").trim() : cleanInput;
             let yearQuery = yearMatch ? `&primary_release_year=${yearMatch[0]}` : "";
 
-            const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(titleQuery)}${yearQuery}&language=zh-CN`, { 
-                headers: { 'Authorization': `Bearer ${TOKEN}` } 
-            });
-            const sData = await sRes.json();
-            
-            if (!sData.results?.length) { 
-                resultDiv.innerHTML = "❌ 未找到该影片，请微调关键词"; 
-                return; 
-            }
-
-            const movie = sData.results[0];
-            const dRes = await fetch(`https://api.themoviedb.org/3/movie/${movie.id}?language=zh-CN&append_to_response=release_dates,credits`, {
+            const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(titleQuery)}${yearQuery}&language=zh-CN`, {
                 headers: { 'Authorization': `Bearer ${TOKEN}` }
             });
-            const d = await dRes.json();
+            const sData = await sRes.json();
 
-            const h = Math.floor(d.runtime / 60);
-            const m = d.runtime % 60;
-            const year = d.release_date?.split('-')[0] || '';
-            
-            // 链接拼接
-            const doubanLink = `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(d.title + ' ' + year)}&cat=1002`;
-            const imdbGuideLink = d.imdb_id ? `https://www.imdb.com/title/${d.imdb_id}/parentalguide` : `https://www.imdb.com/find?q=${encodeURIComponent(d.original_title)}`;
+            if (!sData.results?.length) {
+                resultDiv.innerHTML = "❌ 未找到该影片，请微调关键词";
+                return;
+            }
 
-            let cert = "NR";
-            try {
-                const rs = d.release_dates.results;
-                const target = rs.find(r => r.iso_3166_1 === 'CN') || rs.find(r => r.iso_3166_1 === 'US') || rs[0];
-                cert = target.release_dates.find(date => date.certification !== "")?.certification || "NR";
-            } catch (e) {}
+            app.candidates = sData.results.slice(0, 8);
 
-            resultDiv.innerHTML = `
-                <div class="movie-card">
-                    <a href="https://www.themoviedb.org/movie/${d.id}?language=zh-CN" target="_blank" class="poster-box" title="点击查看 TMDB 详情">
-                        <img src="${d.poster_path ? 'https://image.tmdb.org/t/p/w500'+d.poster_path : 'https://via.placeholder.com/500x750'}" class="poster">
-                    </a>
-                    <div class="info">
-                        <div class="title">${d.title}</div>
-                        <div class="meta">${d.original_title} · ${year || '未知'}</div>
-                        <div class="badge-group">
-                            <span class="score-tag">⭐ ${d.vote_average.toFixed(1)}</span>
-                            <span class="rating-tag">分级：${cert}</span>
-                            <a href="${doubanLink}" target="_blank" class="btn-link douban-btn">
-                                <svg width="12" height="12" viewBox="0 0 24 24"><path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#fff" opacity="0.2"/><path d="M11 6.5h2v1h-2v-1zm4 1h-6v1h6v-1zm-6 3h6v1h-6v-1zm1 4.5h-2.5v1h1v1.5h-1v1h4v-1h-1v-1.5h1.5l1.5-1.5v-1h-3.5v1h1.5l-1 1zm-3-3v1h8v-1h-8z" fill="#fff"/></svg>
-                                豆瓣
-                            </a>
-                            <a href="${imdbGuideLink}" target="_blank" class="btn-link imdb-btn">
-                                <span style="background:var(--imdb-yellow); color:#000; padding:0 3px; border-radius:2px; font-size:10px; margin-right:3px;">IMDb</span>
-                                内容质检
-                            </a>
-                        </div>
-                        <div class="runtime-box">
-                            <span style="font-size:12px; color:#7f8c8d; font-weight:bold;">官方核定原始时长</span><br>
-                            <span class="runtime-text">${h} 小时 ${m} 分钟</span>
-                            <span style="font-size:15px; color:#95a5a6;"> (${d.runtime} min)</span>
-                        </div>
-                        <div class="overview"><strong>剧情大纲：</strong><br>${d.overview || '暂无详细记载。'}</div>
-                    </div>
-                </div>
-                <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px;">🎬 主要演职人员</div>
-                <div class="cast-list">${(d.credits.cast || []).slice(0, 6).map(p => `
-                    <div class="cast-item">
-                        <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
-                            <img src="${p.profile_path ? 'https://image.tmdb.org/t/p/w185'+p.profile_path : 'https://via.placeholder.com/185x278'}" class="cast-img">
-                            <span class="cast-name">${p.name}</span>
-                            <span class="cast-role">${p.character || 'Cast'}</span>
-                        </a>
-                    </div>
-                `).join('')}</div>
-            `;
+            // 默认直接展示最匹配的结果（TMDB 排第一的那个），省去多余点击；
+            // 选错了可以在详情页点“返回候选列表”手动挑，逻辑见 renderMovieDetail 里的 backLink。
+            showMovieDetail(app.candidates[0].id);
         } catch (err) { resultDiv.innerHTML = `⚠️ 检索失败`; }
     }
+
+    // 展示候选列表，供用户手动选择正确的一部
+    function renderCandidateList() {
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = `
+            <div class="candidate-header">找到 ${app.candidates.length} 个可能匹配的结果，请选择正确的一项：</div>
+            <div class="candidate-list">
+                ${app.candidates.map((r, i) => `
+                    <div class="candidate-item" onclick="showMovieDetail(${r.id})">
+                        <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : 'https://via.placeholder.com/154x231?text=No+Image'}" class="candidate-img">
+                        <div class="candidate-info">
+                            <div class="candidate-title">${r.title}</div>
+                            <div class="candidate-meta">${r.original_title || ''} · ${r.release_date ? r.release_date.split('-')[0] : '未知年份'}</div>
+                            <div class="candidate-overview">${r.overview || '暂无简介。'}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    // --- 数据规范层 ---
+    // 把 TMDB 返回的原始、嵌套、可能缺字段的数据，转换成渲染层能放心使用的
+    // 扁平结构。所有的“字段可能不存在”的防御逻辑集中在这一个地方，
+    // 而不是散落在拼 HTML 的模板字符串里。
+    function normalizeMovie(d) {
+        const runtimeMinutes = typeof d.runtime === 'number' ? d.runtime : 0;
+
+        let certification = 'NR';
+        try {
+            const releaseResults = d.release_dates?.results || [];
+            const target = releaseResults.find(r => r.iso_3166_1 === 'CN')
+                || releaseResults.find(r => r.iso_3166_1 === 'US')
+                || releaseResults[0];
+            certification = target?.release_dates?.find(rd => rd.certification !== '')?.certification || 'NR';
+        } catch (e) {
+            certification = 'NR';
+        }
+
+        const director = (d.credits?.crew || []).find(c => c.job === 'Director')?.name || '';
+        const genres = (d.genres || []).map(g => g.name).filter(Boolean);
+
+        return {
+            id: d.id,
+            title: d.title || '未知片名',
+            originalTitle: d.original_title || '',
+            year: d.release_date ? d.release_date.split('-')[0] : '未知',
+            runtimeMinutes,
+            runtimeHours: Math.floor(runtimeMinutes / 60),
+            runtimeRemainMinutes: runtimeMinutes % 60,
+            voteAverage: typeof d.vote_average === 'number' ? d.vote_average : 0,
+            certification,
+            director,
+            genres,
+            posterPath: d.poster_path || null,
+            overview: d.overview || '暂无详细记载。',
+            // 保留前 12 位演职人员：默认只展示前 6 位，其余通过“展开”按钮显示，
+            // 不需要为此再发一次请求。
+            cast: (d.credits?.cast || []).slice(0, 12).map(p => ({
+                id: p.id,
+                name: p.name || '未知演员',
+                character: p.character || 'Cast',
+                profilePath: p.profile_path || null
+            }))
+        };
+    }
+
+    // --- API 层：只负责请求 + 规范化，不碰 DOM ---
+    async function fetchMovieDetail(movieId) {
+        const dRes = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?language=zh-CN&append_to_response=release_dates,credits`, {
+            headers: { 'Authorization': `Bearer ${TOKEN}` }
+        });
+        if (!dRes.ok) {
+            throw new Error(`TMDB 详情请求失败：HTTP ${dRes.status}`);
+        }
+        const d = await dRes.json();
+        return normalizeMovie(d);
+    }
+
+    // 豆瓣搜索链接：只传片名的话，同名电影/剧集/综艺很容易混在一起。
+    // 加上年份能显著收窄范围——豆瓣的搜索是全文匹配，"片名 + 年份"
+    // 基本能把结果收敛到目标影片本身（前提是年份是准确的原始上映年份）。
+    function buildDoubanSearchLink(movie) {
+        const hasYear = movie.year && movie.year !== '未知';
+        const searchText = hasYear ? `${movie.title} ${movie.year}` : movie.title;
+        return `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(searchText)}&cat=1002`;
+    }
+
+    // 展开/收起完整演职人员列表（数据已经在 normalizeMovie 阶段拿到，不需要重新请求）
+    function toggleCastList() {
+        const list = document.getElementById('castList');
+        const btn = document.getElementById('castToggleBtn');
+        if (!list || !btn) return;
+        const expanded = list.classList.toggle('expanded');
+        btn.textContent = expanded ? '收起 ▲' : `查看全部 ${list.children.length} 位演职人员 ▼`;
+    }
+
+    // --- UI 层：只负责把已经规范化好的 movie 对象拼成 DOM，不发请求 ---
+    function renderMovieDetail(movie) {
+        const resultDiv = document.getElementById('result');
+        const doubanLink = buildDoubanSearchLink(movie);
+        const backLink = app.candidates.length > 1
+            ? `<div class="back-link" onclick="renderCandidateList()">← 返回候选列表，重新选择</div>`
+            : '';
+
+        resultDiv.innerHTML = `
+            ${backLink}
+            <div class="movie-card">
+                <a href="https://www.themoviedb.org/movie/${movie.id}?language=zh-CN" target="_blank" class="poster-box" title="点击查看 TMDB 详情">
+                    <img src="${movie.posterPath ? 'https://image.tmdb.org/t/p/w500'+movie.posterPath : 'https://via.placeholder.com/500x750'}" class="poster">
+                </a>
+                <div class="info">
+                    <div class="title">${movie.title}</div>
+                    <div class="meta">${movie.originalTitle} · ${movie.year}</div>
+                    ${movie.director ? `<div class="director-line"><b>导演</b> ${movie.director}</div>` : ''}
+                    ${movie.genres.length ? `<div class="genre-row">${movie.genres.map(g => `<span class="genre-tag">${g}</span>`).join('')}</div>` : ''}
+                    <div class="badge-group">
+                        <span class="score-tag">⭐ ${movie.voteAverage.toFixed(1)}</span>
+                        <span class="rating-tag">分级：${movie.certification}</span>
+                        <a href="${doubanLink}" target="_blank" class="douban-btn" title="在豆瓣中搜索该电影">
+                            <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#00b51d"/><path d="M11 6.5h2v1h-2v-1zm4 1h-6v1h6v-1zm-6 3h6v1h-6v-1zm1 4.5h-2.5v1h1v1.5h-1v1h4v-1h-1v-1.5h1.5l1.5-1.5v-1h-3.5v1h1.5l-1 1zm-3-3v1h8v-1h-8z" fill="#fff"/></svg>
+                            豆瓣搜索
+                        </a>
+                    </div>
+                    <div class="runtime-panel">
+                        <span class="runtime-label">官方核定原始时长</span>
+                        <span class="runtime-readout">${movie.runtimeHours}h ${String(movie.runtimeRemainMinutes).padStart(2,'0')}m</span>
+                        <span class="runtime-sub">${movie.runtimeMinutes} min</span>
+                    </div>
+                    <div class="overview"><strong>剧情大纲：</strong><br>${movie.overview}</div>
+                </div>
+            </div>
+            <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px;">🎬 主要演职人员</div>
+            <div class="cast-list" id="castList">${movie.cast.map(p => `
+                <div class="cast-item">
+                    <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
+                        <img src="${p.profilePath ? 'https://image.tmdb.org/t/p/w185'+p.profilePath : 'https://via.placeholder.com/185x278'}" class="cast-img">
+                        <span class="cast-name">${p.name}</span>
+                        <span class="cast-role">${p.character}</span>
+                    </a>
+                </div>
+            `).join('')}</div>
+            ${movie.cast.length > 6 ? `<div class="cast-toggle"><button id="castToggleBtn" onclick="toggleCastList()">查看全部 ${movie.cast.length} 位演职人员 ▼</button></div>` : ''}
+        `;
+    }
+
+    // --- 编排层：串联 fetch → normalize → render，并处理加载态/错误态 ---
+    async function showMovieDetail(movieId) {
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在加载详情...</div>";
+
+        try {
+            const movie = await fetchMovieDetail(movieId);
+            app.selectedMovie = movie;
+            renderMovieDetail(movie);
+        } catch (err) {
+            resultDiv.innerHTML = `⚠️ 详情加载失败`;
+        }
+    }
+
     document.getElementById('movieName').onkeypress = (e) => { if (e.keyCode === 13) searchMovie(); };
 </script>
 </body>
