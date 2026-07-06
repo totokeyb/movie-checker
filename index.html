@@ -314,14 +314,12 @@
     function renderMovieDetail(movie) {
         const resultDiv = document.getElementById('result');
         const doubanLink = buildDoubanSearchLink(movie);
-        const backLink = app.candidates.length > 1
-            ? `<div style="text-align:left;">
+        const backLink = `<div style="text-align:left;">
                     <button class="back-btn" onclick="renderCandidateList()" title="重新选择正确的一项">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
                         返回候选列表
                     </button>
-               </div>`
-            : '';
+               </div>`;
 
         resultDiv.innerHTML = `
             ${backLink}
