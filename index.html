@@ -179,11 +179,19 @@
     // 方便以后加收藏/历史记录之类的功能时有地方挂钩，
     // 但不引入完整状态机——这个工具的交互路径还是线性的，不值得上重架构。
     const app = {
-        candidates: [],      // 当前这次搜索的候选影片列表（全部，不做条数截断）
-        candidatePage: 1,    // 候选列表当前页码（从 1 开始）
-        selectedMovie: null  // 当前展示详情的影片（规范化后的数据）
+        candidates: [],      // 当前这次搜索的候选影片列表（会随着翻页从 TMDB 继续拉取，逐步累积）
+        candidatePage: 1,    // 候选列表当前页码（从 1 开始，每页 CANDIDATES_PER_PAGE 条）
+        selectedMovie: null, // 当前展示详情的影片（规范化后的数据）
+        tmdbPage: 1,         // 已经从 TMDB 拉到的搜索结果页码（TMDB 每页固定 20 条）
+        tmdbTotalKnown: 0,   // TMDB 该次搜索的总结果数，已按 MAX_TMDB_PAGES 封顶
+        searchTitleQuery: '',
+        searchYearQuery: ''
     };
     const CANDIDATES_PER_PAGE = 10;
+    // TMDB 每页固定返回 20 条，理论上可以一直翻到几百页；
+    // 对一个电影核查工具来说，超过 5 页（100 条候选）基本意味着关键词太宽泛，
+    // 该收窄搜索词而不是继续翻页，所以在这里封顶，避免无谓的请求和成百上千个页码按钮。
+    const MAX_TMDB_PAGES = 5;
 
     window.onload = function() {
         if (!TOKEN) askForToken();
@@ -231,7 +239,7 @@
             let titleQuery = yearMatch ? cleanInput.replace(yearMatch[0], "").trim() : cleanInput;
             let yearQuery = yearMatch ? `&primary_release_year=${yearMatch[0]}` : "";
 
-            const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(titleQuery)}${yearQuery}&language=zh-CN`, {
+            const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(titleQuery)}${yearQuery}&language=zh-CN&page=1`, {
                 headers: { 'Authorization': `Bearer ${TOKEN}` }
             });
 
@@ -253,6 +261,10 @@
 
             app.candidates = sData.results;
             app.candidatePage = 1;
+            app.tmdbPage = 1;
+            app.tmdbTotalKnown = Math.min(sData.total_results || sData.results.length, MAX_TMDB_PAGES * 20);
+            app.searchTitleQuery = titleQuery;
+            app.searchYearQuery = yearQuery;
 
             // 默认直接展示最匹配的结果（TMDB 排第一的那个），省去多余点击；
             // 选错了可以在详情页点“返回候选列表”手动挑，逻辑见 renderMovieDetail 里的 backLink。
@@ -263,14 +275,17 @@
     // 展示候选列表，供用户手动选择正确的一部；每页最多 CANDIDATES_PER_PAGE 条，翻页不重新请求
     function renderCandidateList() {
         const resultDiv = document.getElementById('result');
-        const totalPages = Math.max(1, Math.ceil(app.candidates.length / CANDIDATES_PER_PAGE));
+        // 总页数用 app.tmdbTotalKnown（TMDB 实际结果数，已按 MAX_TMDB_PAGES 封顶）算，
+        // 而不是当前已加载的 app.candidates.length——否则翻到还没拉取过的页码时，
+        // 总页数会被低估，导致翻页按钮提前失效。
+        const totalPages = Math.max(1, Math.ceil(app.tmdbTotalKnown / CANDIDATES_PER_PAGE));
         app.candidatePage = Math.min(Math.max(1, app.candidatePage), totalPages);
 
         const start = (app.candidatePage - 1) * CANDIDATES_PER_PAGE;
         const pageItems = app.candidates.slice(start, start + CANDIDATES_PER_PAGE);
 
         resultDiv.innerHTML = `
-            <div class="candidate-header">找到 ${app.candidates.length} 个可能匹配的结果，请选择正确的一项：</div>
+            <div class="candidate-header">找到 ${app.tmdbTotalKnown} 个可能匹配的结果，请选择正确的一项：</div>
             <div class="candidate-list">
                 ${pageItems.map((r, i) => `
                     <div class="candidate-item" onclick="showMovieDetail(${r.id})">
@@ -306,7 +321,32 @@
         `;
     }
 
-    function goToCandidatePage(page) {
+    // 单独封装“拉取 TMDB 搜索结果第 page 页”，复用同一个查询条件
+    async function fetchSearchPage(page) {
+        const res = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(app.searchTitleQuery)}${app.searchYearQuery}&language=zh-CN&page=${page}`, {
+            headers: { 'Authorization': `Bearer ${TOKEN}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    }
+
+    async function goToCandidatePage(page) {
+        const neededCount = page * CANDIDATES_PER_PAGE;
+        const canFetchMore = app.tmdbPage < MAX_TMDB_PAGES && app.candidates.length < app.tmdbTotalKnown;
+
+        // 目标页所需的数据还没加载到本地时，接着往后翻 TMDB 的页，翻页时不重新搜索、只追加数据
+        if (app.candidates.length < neededCount && canFetchMore) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在加载更多候选结果...</div>";
+            while (app.candidates.length < neededCount && app.tmdbPage < MAX_TMDB_PAGES && app.candidates.length < app.tmdbTotalKnown) {
+                try {
+                    const nextData = await fetchSearchPage(app.tmdbPage + 1);
+                    app.tmdbPage++;
+                    app.candidates = app.candidates.concat(nextData.results || []);
+                } catch (e) { break; } // 拉取失败就停在已有数据，不阻塞用户继续浏览
+            }
+        }
+
         app.candidatePage = page;
         renderCandidateList();
     }
