@@ -175,22 +175,17 @@
 <script>
     let TOKEN = localStorage.getItem('tmdb_access_token');
 
-    // 轻量状态容器：把原来散落的 lastResults 全局变量收拢到一起，
-    // 方便以后加收藏/历史记录之类的功能时有地方挂钩，
-    // 但不引入完整状态机——这个工具的交互路径还是线性的，不值得上重架构。
+    // 轻量状态容器
     const app = {
-        candidates: [],      // 当前这次搜索的候选影片列表（会随着翻页从 TMDB 继续拉取，逐步累积）
-        candidatePage: 1,    // 候选列表当前页码（从 1 开始，每页 CANDIDATES_PER_PAGE 条）
-        selectedMovie: null, // 当前展示详情的影片（规范化后的数据）
-        tmdbPage: 1,         // 已经从 TMDB 拉到的搜索结果页码（TMDB 每页固定 20 条）
-        tmdbTotalKnown: 0,   // TMDB 该次搜索的总结果数，已按 MAX_TMDB_PAGES 封顶
+        candidates: [],      // 当前这次搜索的候选影片列表
+        candidatePage: 1,    // 候选列表当前页码
+        selectedMovie: null, // 当前展示详情的影片
+        tmdbPage: 1,         // 已经从 TMDB 拉到的搜索结果页码
+        tmdbTotalKnown: 0,   // TMDB 该次搜索的总结果数
         searchTitleQuery: '',
         searchYearQuery: ''
     };
     const CANDIDATES_PER_PAGE = 10;
-    // TMDB 每页固定返回 20 条，理论上可以一直翻到几百页；
-    // 对一个电影核查工具来说，超过 5 页（100 条候选）基本意味着关键词太宽泛，
-    // 该收窄搜索词而不是继续翻页，所以在这里封顶，避免无谓的请求和成百上千个页码按钮。
     const MAX_TMDB_PAGES = 5;
 
     window.onload = function() {
@@ -266,18 +261,14 @@
             app.searchTitleQuery = titleQuery;
             app.searchYearQuery = yearQuery;
 
-            // 默认直接展示最匹配的结果（TMDB 排第一的那个），省去多余点击；
-            // 选错了可以在详情页点“返回候选列表”手动挑，逻辑见 renderMovieDetail 里的 backLink。
+            // 默认直接展示最匹配的结果
             showMovieDetail(app.candidates[0].id);
         } catch (err) { resultDiv.innerHTML = `⚠️ 检索失败`; }
     }
 
-    // 展示候选列表，供用户手动选择正确的一部；每页最多 CANDIDATES_PER_PAGE 条，翻页不重新请求
+    // 展示候选列表
     function renderCandidateList() {
         const resultDiv = document.getElementById('result');
-        // 总页数用 app.tmdbTotalKnown（TMDB 实际结果数，已按 MAX_TMDB_PAGES 封顶）算，
-        // 而不是当前已加载的 app.candidates.length——否则翻到还没拉取过的页码时，
-        // 总页数会被低估，导致翻页按钮提前失效。
         const totalPages = Math.max(1, Math.ceil(app.tmdbTotalKnown / CANDIDATES_PER_PAGE));
         app.candidatePage = Math.min(Math.max(1, app.candidatePage), totalPages);
 
@@ -290,7 +281,7 @@
                 ${pageItems.map((r, i) => `
                     <div class="candidate-item" onclick="showMovieDetail(${r.id})">
                         <div class="candidate-poster-wrap">
-                            <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : 'https://via.placeholder.com/154x231?text=No+Image'}" class="candidate-img">
+                            <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : './default-avatar.jpg'}" class="candidate-img" onerror="this.onerror=null; this.src='./default-avatar.jpg';">
                             <span class="candidate-rank">#${start + i + 1}</span>
                         </div>
                         <div class="candidate-info">
@@ -305,7 +296,7 @@
         `;
     }
 
-    // 生成分页按钮：上一页 / 页码 / 下一页
+    // 生成分页按钮
     function renderPagination(totalPages) {
         const cur = app.candidatePage;
         const pageBtns = [];
@@ -321,7 +312,7 @@
         `;
     }
 
-    // 单独封装“拉取 TMDB 搜索结果第 page 页”，复用同一个查询条件
+    // 单独封装“拉取 TMDB 搜索结果”
     async function fetchSearchPage(page) {
         const res = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(app.searchTitleQuery)}${app.searchYearQuery}&language=zh-CN&page=${page}`, {
             headers: { 'Authorization': `Bearer ${TOKEN}` }
@@ -334,7 +325,6 @@
         const neededCount = page * CANDIDATES_PER_PAGE;
         const canFetchMore = app.tmdbPage < MAX_TMDB_PAGES && app.candidates.length < app.tmdbTotalKnown;
 
-        // 目标页所需的数据还没加载到本地时，接着往后翻 TMDB 的页，翻页时不重新搜索、只追加数据
         if (app.candidates.length < neededCount && canFetchMore) {
             const resultDiv = document.getElementById('result');
             resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在加载更多候选结果...</div>";
@@ -343,7 +333,7 @@
                     const nextData = await fetchSearchPage(app.tmdbPage + 1);
                     app.tmdbPage++;
                     app.candidates = app.candidates.concat(nextData.results || []);
-                } catch (e) { break; } // 拉取失败就停在已有数据，不阻塞用户继续浏览
+                } catch (e) { break; }
             }
         }
 
@@ -352,18 +342,12 @@
     }
 
     // --- 数据规范层 ---
-    // 把 TMDB 返回的原始、嵌套、可能缺字段的数据，转换成渲染层能放心使用的
-    // 扁平结构。所有的“字段可能不存在”的防御逻辑集中在这一个地方，
-    // 而不是散落在拼 HTML 的模板字符串里。
     function normalizeMovie(d) {
         const runtimeMinutes = typeof d.runtime === 'number' ? d.runtime : 0;
 
         let certification = 'NR';
         try {
             const releaseResults = d.release_dates?.results || [];
-            // 找到某个国家的记录不代表它有实际分级——中国大陆没有分级制度，
-            // CN 记录几乎总是存在但 certification 为空字符串，需要按优先级往下找
-            // 直到某个国家真的给出了非空分级，而不是命中 CN 就直接停下。
             const certFromCountry = (iso) => {
                 const country = releaseResults.find(r => r.iso_3166_1 === iso);
                 return country?.release_dates?.find(rd => rd.certification !== '')?.certification;
@@ -387,15 +371,13 @@
             runtimeMinutes,
             runtimeHours: Math.floor(runtimeMinutes / 60),
             runtimeRemainMinutes: runtimeMinutes % 60,
-            hasRuntime: runtimeMinutes > 0, // TMDB 对该片缺少时长数据时 runtime 为 0，需要和"真实时长为0"区分开
+            hasRuntime: runtimeMinutes > 0,
             voteAverage: typeof d.vote_average === 'number' ? d.vote_average : 0,
             certification,
             director,
             genres,
             posterPath: d.poster_path || null,
             overview: d.overview || '暂无详细记载。',
-            // 不在数据层做人数截断——只保留渲染层（CSS 默认折叠到 6 位）这一层控制，
-            // 这样"查看全部 N 位"里的 N 才是 TMDB 实际返回的全部人数，不会出现两层截断打架。
             cast: (d.credits?.cast || []).map(p => ({
                 id: p.id,
                 name: p.name || '未知演员',
@@ -405,7 +387,7 @@
         };
     }
 
-    // --- API 层：只负责请求 + 规范化，不碰 DOM ---
+    // --- API 层 ---
     async function fetchMovieDetail(movieId) {
         const dRes = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?language=zh-CN&append_to_response=release_dates,credits`, {
             headers: { 'Authorization': `Bearer ${TOKEN}` }
@@ -417,7 +399,6 @@
         return normalizeMovie(d);
     }
 
-    // 评分色阶：高分暖色、中等维持原黄色、低分转冷灰，一眼就能感知优劣，不用心算数字
     function scoreBadgeStyle(score) {
         if (score >= 8) return 'background: linear-gradient(135deg, #f39c12, #e67e22);';
         if (score >= 6) return 'background: linear-gradient(135deg, #f4d03f, #f1c40f);';
@@ -425,16 +406,12 @@
         return 'background: linear-gradient(135deg, #bdc3c7, #95a5a6);';
     }
 
-    // 豆瓣搜索链接：只传片名的话，同名电影/剧集/综艺很容易混在一起。
-    // 加上年份能显著收窄范围——豆瓣的搜索是全文匹配，"片名 + 年份"
-    // 基本能把结果收敛到目标影片本身（前提是年份是准确的原始上映年份）。
     function buildDoubanSearchLink(movie) {
         const hasYear = movie.year && movie.year !== '未知';
         const searchText = hasYear ? `${movie.title} ${movie.year}` : movie.title;
         return `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(searchText)}&cat=1002`;
     }
 
-    // 展开/收起完整演职人员列表（数据已经在 normalizeMovie 阶段拿到，不需要重新请求）
     function toggleCastList() {
         const list = document.getElementById('castList');
         const btn = document.getElementById('castToggleBtn');
@@ -443,7 +420,7 @@
         btn.textContent = expanded ? '收起 ▲' : `查看全部 ${list.children.length} 位演职人员 ▼`;
     }
 
-    // --- UI 层：只负责把已经规范化好的 movie 对象拼成 DOM，不发请求 ---
+    // --- UI 层 ---
     function renderMovieDetail(movie) {
         const resultDiv = document.getElementById('result');
         const doubanLink = buildDoubanSearchLink(movie);
@@ -458,7 +435,7 @@
             ${backLink}
             <div class="movie-card">
                 <a href="https://www.themoviedb.org/movie/${movie.id}?language=zh-CN" target="_blank" class="poster-box" title="点击查看 TMDB 详情">
-                    <img src="${movie.posterPath ? 'https://image.tmdb.org/t/p/w500'+movie.posterPath : 'https://via.placeholder.com/500x750'}" class="poster">
+                    <img src="${movie.posterPath ? 'https://image.tmdb.org/t/p/w500'+movie.posterPath : './default-avatar.jpg'}" class="poster" onerror="this.onerror=null; this.src='./default-avatar.jpg';">
                 </a>
                 <div class="info">
                     <div class="title">${movie.title}</div>
@@ -487,9 +464,9 @@
             <div class="cast-list" id="castList">${movie.cast.map(p => `
                 <div class="cast-item">
                     <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
-                       <img src="${p.profilePath ? 'https://image.tmdb.org/t/p/w185'+p.profilePath : 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 185 278%22 fill=%22%23e9edf0%22><rect width=%22100%%22 height=%22100%%22/><circle cx=%2292.5%22 cy=%22110%22 r=%2245%22 fill=%22%23b0c4de%22/><path d=%22M25 240c0-40 30-65 67.5-65s67.5 25 67.5 65z%22 fill=%22%23b0c4de%22/></svg>'}" 
+                       <img src="${p.profilePath ? 'https://image.tmdb.org/t/p/w185'+p.profilePath : './default-avatar.jpg'}" 
      class="cast-img" 
-     onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 185 278%22 fill=%22%23e9edf0%22><rect width=%22100%%22 height=%22100%%22/><circle cx=%2292.5%22 cy=%22110%22 r=%2245%22 fill=%22%23b0c4de%22/><path d=%22M25 240c0-40 30-65 67.5-65s67.5 25 67.5 65z%22 fill=%22%23b0c4de%22/></svg>';">
+     onerror="this.onerror=null; this.src='./default-avatar.jpg';">
                         <span class="cast-name">${p.name}</span>
                         <span class="cast-role">${p.character}</span>
                     </a>
@@ -499,7 +476,7 @@
         `;
     }
 
-    // --- 编排层：串联 fetch → normalize → render，并处理加载态/错误态 ---
+    // --- 编排层 ---
     async function showMovieDetail(movieId) {
         const resultDiv = document.getElementById('result');
         resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在加载详情...</div>";
