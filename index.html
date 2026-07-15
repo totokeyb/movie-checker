@@ -6,7 +6,19 @@
     <title>电影时长质检仪</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎥</text></svg>">
     <style>
-        :root { --primary: #3498db; --dark: #2c3e50; --bg: #eef2f4; --tmdb-blue: #01b4e4; --douban-green: #00b51d; --accent: #e67e22; --panel: #1c2b3a; --panel-2: #24374a; --readout: #5be3ff; --mono: 'SF Mono', 'JetBrains Mono', Consolas, Menlo, monospace; }
+        :root { 
+            --primary: #3498db; 
+            --dark: #2c3e50; 
+            --bg: #eef2f4; 
+            --tmdb-blue: #01b4e4; 
+            --douban-green: #00b51d; 
+            --accent: #e67e22; 
+            --panel: #1c2b3a; 
+            --panel-2: #24374a; 
+            --readout: #5be3ff; 
+            --mono: 'SF Mono', 'JetBrains Mono', Consolas, Menlo, monospace; 
+        }
+        
         body {
             font-family: "Microsoft YaHei", -apple-system, sans-serif;
             margin: 0; padding: 15px; color: #333;
@@ -20,19 +32,60 @@
             background-size: auto, auto, 28px 28px, 28px 28px;
             background-attachment: fixed;
         }
-        .container { max-width: 800px; margin: 40px auto; background: white; padding: 34px 30px 30px; border-radius: 20px; box-shadow: 0 20px 50px rgba(28,43,58,0.12), 0 2px 8px rgba(28,43,58,0.06); position: relative; overflow: hidden; }
-        /* 胶片齿孔装饰条：呼应“电影”这个主题，而不是随便加一条彩色色带 */
+
+        /* 主容器 */
+        .container { 
+            max-width: 800px; 
+            margin: 40px auto; 
+            background: #ffffff; 
+            padding: 34px 30px 30px; 
+            border-radius: 20px; 
+            box-shadow: 0 20px 50px rgba(28,43,58,0.12), 0 2px 8px rgba(28,43,58,0.06); 
+            position: relative; 
+            overflow: hidden;
+            transition: background 0.4s ease, color 0.4s ease;
+        }
+
+        /* --- 容器内部：TMDB 专属局部背景层 --- */
+        .container-backdrop {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-size: cover;
+            background-position: center 20%;
+            /* 💡 核心优化：低模糊度 (4px) 配合适度暗化，完美保留画面构图和主体细节 */
+            filter: blur(4px) brightness(0.35); 
+            transform: scale(1.02); /* 极低拉伸，防止背景人物和场景被扯变形 */
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.6s ease, background-image 0.6s ease;
+            pointer-events: none;
+        }
+
+        /* 框架内部内容提质层，确保内容在背景层之上 */
+        .container-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* 当处于沉浸详情模式时，主卡片框架内文字颜色自动调浅，确保高可读性 */
+        .container.immersive-mode {
+            background: #1c2b3a; /* 沉浸状态下的暗底过渡色 */
+            color: #f5f7fa;
+        }
+
+        /* 胶片齿孔装饰条 */
         .container::before {
             content: ""; position: absolute; top: 0; left: 0; right: 0; height: 10px;
             background-color: #232f3a;
             background-image: radial-gradient(circle, var(--bg) 2.2px, transparent 2.3px);
             background-size: 18px 10px;
             background-position: 9px center;
+            z-index: 3;
         }
 
-        .search-box { display: flex; gap: 10px; margin-bottom: 25px; position: sticky; top: 0; background: white; padding: 5px 0; z-index: 10; }
-        input { flex: 1; padding: 15px; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; }
-        input:focus { border-color: var(--tmdb-blue); box-shadow: 0 0 0 4px rgba(1, 180, 228, 0.1); }
+        .search-box { display: flex; gap: 10px; margin-bottom: 25px; position: sticky; top: 0; background: transparent; padding: 5px 0; z-index: 10; }
+        input { flex: 1; padding: 15px; border: 2px solid #eee; border-radius: 12px; font-size: 16px; outline: none; transition: 0.3s; background: rgba(255,255,255,0.95); }
+        input:focus { border-color: var(--tmdb-blue); box-shadow: 0 0 0 4px rgba(1, 180, 228, 0.1); background: #fff; }
 
         .paste-btn { padding: 0 15px; background: #fff; color: var(--tmdb-blue); border: 2px solid var(--tmdb-blue); border-radius: 12px; cursor: pointer; font-size: 20px; transition: 0.3s; }
         .paste-btn:hover { background: var(--tmdb-blue); color: white; }
@@ -41,18 +94,28 @@
         .movie-card { display: flex; align-items: flex-start; gap: 25px; margin-bottom: 25px; flex-wrap: wrap; animation: fadeIn 0.5s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        .poster-box { flex-shrink: 0; cursor: pointer; border-radius: 15px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.15); width: 220px; transition: 0.3s; }
-        .poster-box:hover { transform: scale(1.03); box-shadow: 0 12px 25px rgba(0,0,0,0.2); }
+        .poster-box { flex-shrink: 0; cursor: pointer; border-radius: 15px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.3); width: 220px; transition: 0.3s; }
+        .poster-box:hover { transform: scale(1.03); box-shadow: 0 12px 25px rgba(0,0,0,0.4); }
         .poster { width: 100%; height: auto; display: block; }
 
         .info { flex: 1; min-width: 300px; }
-        .title { font-size: 28px; font-weight: 800; color: var(--dark); margin: 0; letter-spacing: -0.5px; }
-        .meta { color: #95a5a6; font-size: 14px; margin-top: 5px; }
-        .director-line { color: #7f8c8d; font-size: 13px; margin-top: 6px; }
-        .director-line b { color: #5a6b7a; }
+        
+        /* 沉浸模式下的标题与元数据字色微调 */
+        .title { font-size: 28px; font-weight: 800; color: var(--dark); margin: 0; letter-spacing: -0.5px; transition: color 0.3s; }
+        .immersive-mode .title { color: #ffffff; }
+        
+        .meta { color: #5a6b7a; font-size: 14px; margin-top: 5px; font-weight: 600; transition: color 0.3s; }
+        .immersive-mode .meta { color: #a5b8c9; }
 
+        .director-line { color: #5a6b7a; font-size: 13px; margin-top: 6px; transition: color 0.3s; }
+        .director-line b { color: var(--dark); transition: color 0.3s; }
+        .immersive-mode .director-line { color: #a5b8c9; }
+        .immersive-mode .director-line b { color: #ffffff; }
+
+        /* 类型标签 */
         .genre-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-        .genre-tag { background: #eef2f5; color: #5a6b7a; padding: 3px 11px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .genre-tag { background: rgba(44, 62, 80, 0.08); color: #2c3e50; padding: 3px 11px; border-radius: 20px; font-size: 12px; font-weight: 700; transition: background 0.3s, color 0.3s; }
+        .immersive-mode .genre-tag { background: rgba(255, 255, 255, 0.15); color: #eef2f5; }
 
         .badge-group { margin: 15px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .score-tag { color: #fff; padding: 4px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; }
@@ -66,12 +129,13 @@
         }
         .douban-btn:hover { background: #008e17; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,181,29,0.3); }
 
-        /* --- 片长仪表读数面板：呼应“质检仪”这个定位，数字用等宽字体呈现测量感 --- */
+        /* 片长仪表读数面板 */
         .runtime-panel {
             background: linear-gradient(150deg, var(--panel) 0%, var(--panel-2) 100%);
             border-radius: 14px; padding: 18px 22px; margin: 20px 0;
             display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
             position: relative; overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
         .runtime-panel::after {
             content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px;
@@ -81,33 +145,47 @@
         .runtime-readout { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--readout); letter-spacing: 0.5px; text-shadow: 0 0 18px rgba(91,227,255,0.35); animation: fadeIn 0.4s ease; }
         .runtime-sub { font-family: var(--mono); font-size: 13px; color: #8ea6ba; }
 
-        .overview { font-size: 15px; line-height: 1.7; color: #555; background: #f9f9f9; padding: 15px; border-radius: 12px; }
+        /* 剧情大纲 */
+        .overview { font-size: 15px; line-height: 1.7; color: #333; background: rgba(255,255,255,0.85); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.3); transition: color 0.3s, background 0.3s; }
+        .immersive-mode .overview { color: #e1e7ed; background: rgba(0, 0, 0, 0.35); border-color: rgba(255,255,255,0.05); }
+
+        /* 主要演职人员 */
+        .cast-header-title { font-weight: bold; margin-bottom: 15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px; color: var(--dark); transition: color 0.3s, border 0.3s; }
+        .immersive-mode .cast-header-title { color: #ffffff; border-color: rgba(255,255,255,0.1); }
 
         .cast-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 15px; margin-top: 15px; }
         .cast-list .cast-item:nth-child(n+7) { display: none; }
         .cast-list.expanded .cast-item:nth-child(n+7) { display: block; }
         .cast-item a { text-decoration: none; color: inherit; display: block; transition: 0.3s; }
         .cast-item a:hover { transform: translateY(-5px); }
-        .cast-img { width: 100%; height: 150px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 8px; border: 2px solid transparent; }
+        .cast-img { width: 100%; height: 150px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); margin-bottom: 8px; border: 2px solid transparent; }
         .cast-item a:hover .cast-img { border-color: var(--tmdb-blue); }
-        .cast-name { font-size: 13px; font-weight: bold; display: block; color: var(--dark); }
-        .cast-role { font-size: 11px; color: #999; }
+        
+        .cast-name { font-size: 13px; font-weight: bold; display: block; color: var(--dark); transition: color 0.3s; }
+        .immersive-mode .cast-name { color: #ffffff; }
+
+        .cast-role { font-size: 11px; color: #666; transition: color 0.3s; }
+        .immersive-mode .cast-role { color: #a5b8c9; }
+
         .cast-toggle { text-align: center; margin-top: 14px; }
         .cast-toggle button {
-            background: none; border: 1px solid #e0e6ea; padding: 6px 18px; border-radius: 20px;
-            font-size: 12px; color: #7f95a8; cursor: pointer; transition: 0.2s; font-family: inherit;
+            background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.1); padding: 6px 18px; border-radius: 20px;
+            font-size: 12px; color: #4f6578; cursor: pointer; transition: 0.2s; font-family: inherit; font-weight: 600;
         }
-        .cast-toggle button:hover { border-color: var(--tmdb-blue); color: var(--tmdb-blue); }
+        .cast-toggle button:hover { border-color: var(--tmdb-blue); color: var(--tmdb-blue); background: #fff; }
+        .immersive-mode .cast-toggle button { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.15); color: #a5b8c9; }
+        .immersive-mode .cast-toggle button:hover { background: rgba(255, 255, 255, 0.2); color: #ffffff; }
 
-        .settings-link { text-align: right; margin-top: 30px; font-size: 12px; color: #ccc; }
+        .settings-link { text-align: right; margin-top: 30px; font-size: 12px; color: #aaa; }
         .settings-link span { cursor: pointer; text-decoration: underline; }
 
         /* --- 候选结果列表 --- */
-        .candidate-header { font-weight: bold; color: #7f8c8d; margin-bottom: 15px; font-size: 14px; }
+        .candidate-header { font-weight: bold; color: #5a6b7a; margin-bottom: 15px; font-size: 14px; }
         .candidate-list { display: flex; flex-direction: column; gap: 10px; }
         .candidate-item {
             display: flex; gap: 15px; align-items: center; padding: 10px;
-            border: 2px solid #eee; border-radius: 12px; cursor: pointer; transition: 0.2s; text-align: left;
+            border: 2px solid rgba(0,0,0,0.05); border-radius: 12px; cursor: pointer; transition: 0.2s; text-align: left;
+            background: rgba(255,255,255,0.8);
         }
         .candidate-item:hover { border-color: var(--tmdb-blue); background: #f5fbfe; transform: translateY(-5px); box-shadow: 0 8px 18px rgba(1,180,228,0.15); }
         .candidate-poster-wrap { position: relative; flex-shrink: 0; }
@@ -120,11 +198,12 @@
         .candidate-img { width: 55px; height: 82px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: #eee; }
         .candidate-info { flex: 1; min-width: 0; }
         .candidate-title { font-weight: bold; font-size: 16px; color: var(--dark); }
-        .candidate-meta { font-size: 12px; color: #95a5a6; margin: 2px 0 4px; }
-        .candidate-overview { font-size: 12px; color: #888; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .candidate-meta { font-size: 12px; color: #7f8c8d; margin: 2px 0 4px; }
+        .candidate-overview { font-size: 12px; color: #666; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        
         .back-btn {
             display: inline-flex; align-items: center; gap: 6px;
-            background: #f2f5f7; color: #7f95a8; border: none;
+            background: rgba(44, 62, 80, 0.08); color: #2c3e50; border: none;
             padding: 7px 16px 7px 12px; border-radius: 20px;
             font-size: 13px; font-weight: 700; cursor: pointer;
             margin: 0 0 18px; transition: 0.2s; font-family: inherit;
@@ -132,13 +211,15 @@
         .back-btn svg { flex-shrink: 0; transition: transform 0.2s; }
         .back-btn:hover { background: #e3f4fb; color: var(--tmdb-blue); }
         .back-btn:hover svg { transform: translateX(-2px); }
+        .immersive-mode .back-btn { background: rgba(255,255,255,0.15); color: #ffffff; }
+        .immersive-mode .back-btn:hover { background: rgba(255,255,255,0.25); }
 
         /* --- 分页控件 --- */
         .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 18px; flex-wrap: wrap; }
         .page-btn {
             min-width: 34px; height: 34px; padding: 0 8px;
-            border: 2px solid #eee; border-radius: 8px; background: #fff;
-            color: #7f95a8; font-size: 13px; font-weight: 700; cursor: pointer;
+            border: 2px solid rgba(0,0,0,0.05); border-radius: 8px; background: rgba(255,255,255,0.8);
+            color: #5a6b7a; font-size: 13px; font-weight: 700; cursor: pointer;
             transition: 0.2s; font-family: inherit;
         }
         .page-btn:hover:not(:disabled) { border-color: var(--tmdb-blue); color: var(--tmdb-blue); }
@@ -150,38 +231,44 @@
 </head>
 <body>
 
-<div class="container">
-    <div class="search-box">
-        <input type="text" id="movieName" placeholder="粘贴电影标题或输入片名..." autocomplete="off">
-        <button class="paste-btn" onclick="handlePaste()" title="粘贴并搜索">📋</button>
-        <button class="search-btn" onclick="searchMovie()">核查</button>
-    </div>
-    <div id="result" style="text-align:center; padding: 46px 0; color:#bbb;">
-        <svg width="68" height="68" viewBox="0 0 24 24" fill="none" stroke="#d3dbe1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;">
-            <rect x="3" y="8.5" width="18" height="12" rx="2"/>
-            <path d="M3 8.5l1.3-4h3.4L6.8 8.5"/>
-            <path d="M9.3 8.5l1.3-4h3.4l-1.3 4"/>
-            <path d="M15.6 8.5l1.3-4h3.4l-1.3 4"/>
-            <line x1="3" y1="8.5" x2="21" y2="8.5"/>
-        </svg>
-        <div>等待输入，开启高效质检之旅...</div>
-    </div>
+<div class="container" id="mainContainer">
+    <!-- 局部容器内沉浸式背景图层 -->
+    <div id="containerBackdrop" class="container-backdrop"></div>
 
-    <div class="settings-link">
-        <span onclick="resetToken()">重置 API TOKEN</span>
+    <!-- 包装一层用于提升图层层级的内容容器 -->
+    <div class="container-content">
+        <div class="search-box">
+            <input type="text" id="movieName" placeholder="粘贴电影标题或输入片名..." autocomplete="off">
+            <button class="paste-btn" onclick="handlePaste()" title="粘贴并搜索">📋</button>
+            <button class="search-btn" onclick="searchMovie()">核查</button>
+        </div>
+        
+        <div id="result" style="text-align:center; padding: 46px 0; color:#bbb;">
+            <svg width="68" height="68" viewBox="0 0 24 24" fill="none" stroke="#d3dbe1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;">
+                <rect x="3" y="8.5" width="18" height="12" rx="2"/>
+                <path d="M3 8.5l1.3-4h3.4L6.8 8.5"/>
+                <path d="M9.3 8.5l1.3-4h3.4l-1.3 4"/>
+                <path d="M15.6 8.5l1.3-4h3.4l-1.3 4"/>
+                <line x1="3" y1="8.5" x2="21" y2="8.5"/>
+            </svg>
+            <div>等待输入，开启高效质检之旅...</div>
+        </div>
+
+        <div class="settings-link">
+            <span onclick="resetToken()">重置 API TOKEN</span>
+        </div>
     </div>
 </div>
 
 <script>
     let TOKEN = localStorage.getItem('tmdb_access_token');
 
-    // 轻量状态容器
     const app = {
-        candidates: [],      // 当前这次搜索的候选影片列表
-        candidatePage: 1,    // 候选列表当前页码
-        selectedMovie: null, // 当前展示详情的影片
-        tmdbPage: 1,         // 已经从 TMDB 拉到的搜索结果页码
-        tmdbTotalKnown: 0,   // TMDB 该次搜索的总结果数
+        candidates: [],      
+        candidatePage: 1,    
+        selectedMovie: null, 
+        tmdbPage: 1,         
+        tmdbTotalKnown: 0,   
         searchTitleQuery: '',
         searchYearQuery: ''
     };
@@ -219,7 +306,20 @@
         } catch (e) { alert("无法访问剪贴板。"); }
     }
 
-    // 第一步：搜索，拿到候选列表
+    // 更新容器局部背景辅助函数
+    function updateContainerBackdrop(backdropPath) {
+        const backdropLayer = document.getElementById('containerBackdrop');
+        const container = document.getElementById('mainContainer');
+        if (backdropPath) {
+            backdropLayer.style.backgroundImage = `url('https://image.tmdb.org/t/p/w780${backdropPath}')`;
+            backdropLayer.style.opacity = '1';
+            container.classList.add('immersive-mode');
+        } else {
+            backdropLayer.style.opacity = '0';
+            container.classList.remove('immersive-mode');
+        }
+    }
+
     async function searchMovie() {
         if (!TOKEN) { askForToken(); return; }
         const resultDiv = document.getElementById('result');
@@ -227,6 +327,7 @@
         if (!inputVal) return;
 
         resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在为您检索官方原始档案...</div>";
+        updateContainerBackdrop(null); // 搜索新片时重置局部背景
 
         try {
             let cleanInput = inputVal.replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
@@ -261,13 +362,13 @@
             app.searchTitleQuery = titleQuery;
             app.searchYearQuery = yearQuery;
 
-            // 默认直接展示最匹配的结果
             showMovieDetail(app.candidates[0].id);
         } catch (err) { resultDiv.innerHTML = `⚠️ 检索失败`; }
     }
 
-    // 展示候选列表
     function renderCandidateList() {
+        updateContainerBackdrop(null); // 返回列表时，容器背景还原为白底
+
         const resultDiv = document.getElementById('result');
         const totalPages = Math.max(1, Math.ceil(app.tmdbTotalKnown / CANDIDATES_PER_PAGE));
         app.candidatePage = Math.min(Math.max(1, app.candidatePage), totalPages);
@@ -296,7 +397,6 @@
         `;
     }
 
-    // 生成分页按钮
     function renderPagination(totalPages) {
         const cur = app.candidatePage;
         const pageBtns = [];
@@ -312,7 +412,6 @@
         `;
     }
 
-    // 单独封装“拉取 TMDB 搜索结果”
     async function fetchSearchPage(page) {
         const res = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(app.searchTitleQuery)}${app.searchYearQuery}&language=zh-CN&page=${page}`, {
             headers: { 'Authorization': `Bearer ${TOKEN}` }
@@ -341,7 +440,6 @@
         renderCandidateList();
     }
 
-    // --- 数据规范层 ---
     function normalizeMovie(d) {
         const runtimeMinutes = typeof d.runtime === 'number' ? d.runtime : 0;
 
@@ -377,6 +475,7 @@
             director,
             genres,
             posterPath: d.poster_path || null,
+            backdropPath: d.backdrop_path || null, 
             overview: d.overview || '暂无详细记载。',
             cast: (d.credits?.cast || []).map(p => ({
                 id: p.id,
@@ -387,7 +486,6 @@
         };
     }
 
-    // --- API 层 ---
     async function fetchMovieDetail(movieId) {
         const dRes = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?language=zh-CN&append_to_response=release_dates,credits`, {
             headers: { 'Authorization': `Bearer ${TOKEN}` }
@@ -420,8 +518,10 @@
         btn.textContent = expanded ? '收起 ▲' : `查看全部 ${list.children.length} 位演职人员 ▼`;
     }
 
-    // --- UI 层 ---
     function renderMovieDetail(movie) {
+        // 渲染详情时加载框架局部背景
+        updateContainerBackdrop(movie.backdropPath);
+
         const resultDiv = document.getElementById('result');
         const doubanLink = buildDoubanSearchLink(movie);
         const backLink = `<div style="text-align:left;">
@@ -460,7 +560,7 @@
                     <div class="overview"><strong>剧情大纲：</strong><br>${movie.overview}</div>
                 </div>
             </div>
-            <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px; color: var(--dark);">🎬 主要演职人员</div>
+            <div class="cast-header-title">🎬 主要演职人员</div>
             <div class="cast-list" id="castList">${movie.cast.map(p => `
                 <div class="cast-item">
                     <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
@@ -476,7 +576,6 @@
         `;
     }
 
-    // --- 编排层 ---
     async function showMovieDetail(movieId) {
         const resultDiv = document.getElementById('result');
         resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在加载详情...</div>";
