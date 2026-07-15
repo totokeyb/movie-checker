@@ -55,8 +55,8 @@
         .genre-tag { background: #eef2f5; color: #5a6b7a; padding: 3px 11px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 
         .badge-group { margin: 15px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .score-tag { background: #f1c40f; color: #fff; padding: 4px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; }
-        .rating-tag { border: 2px solid var(--accent); color: var(--accent); padding: 2px 10px; border-radius: 8px; font-size: 14px; font-weight: bold; }
+        .score-tag { color: #fff; padding: 4px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; }
+        .rating-tag { background: var(--accent); color: #fff; padding: 3px 11px; border-radius: 8px; font-size: 14px; font-weight: bold; }
 
         .douban-btn {
             display: inline-flex; align-items: center; gap: 6px;
@@ -71,9 +71,14 @@
             background: linear-gradient(150deg, var(--panel) 0%, var(--panel-2) 100%);
             border-radius: 14px; padding: 18px 22px; margin: 20px 0;
             display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+            position: relative; overflow: hidden;
+        }
+        .runtime-panel::after {
+            content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px;
+            background-image: repeating-linear-gradient(90deg, rgba(127,168,201,0.4) 0px, rgba(127,168,201,0.4) 1px, transparent 1px, transparent 8px);
         }
         .runtime-label { font-size: 11px; letter-spacing: 1.5px; color: #7fa8c9; text-transform: uppercase; font-weight: 700; flex-basis: 100%; }
-        .runtime-readout { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--readout); letter-spacing: 0.5px; text-shadow: 0 0 18px rgba(91,227,255,0.35); }
+        .runtime-readout { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--readout); letter-spacing: 0.5px; text-shadow: 0 0 18px rgba(91,227,255,0.35); animation: fadeIn 0.4s ease; }
         .runtime-sub { font-family: var(--mono); font-size: 13px; color: #8ea6ba; }
 
         .overview { font-size: 15px; line-height: 1.7; color: #555; background: #f9f9f9; padding: 15px; border-radius: 12px; }
@@ -105,6 +110,13 @@
             border: 2px solid #eee; border-radius: 12px; cursor: pointer; transition: 0.2s; text-align: left;
         }
         .candidate-item:hover { border-color: var(--tmdb-blue); background: #f5fbfe; transform: translateY(-5px); box-shadow: 0 8px 18px rgba(1,180,228,0.15); }
+        .candidate-poster-wrap { position: relative; flex-shrink: 0; }
+        .candidate-rank {
+            position: absolute; top: -6px; left: -6px;
+            background: rgba(28,43,58,0.78); color: #e8f6fb;
+            font-family: var(--mono); font-size: 10px; font-weight: 700;
+            padding: 2px 6px; border-radius: 6px; letter-spacing: 0.3px;
+        }
         .candidate-img { width: 55px; height: 82px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: #eee; }
         .candidate-info { flex: 1; min-width: 0; }
         .candidate-title { font-weight: bold; font-size: 16px; color: var(--dark); }
@@ -144,7 +156,16 @@
         <button class="paste-btn" onclick="handlePaste()" title="粘贴并搜索">📋</button>
         <button class="search-btn" onclick="searchMovie()">核查</button>
     </div>
-    <div id="result" style="color:#bbb; text-align:center; padding: 40px 0;">等待输入，开启高效质检之旅...</div>
+    <div id="result" style="text-align:center; padding: 46px 0; color:#bbb;">
+        <svg width="68" height="68" viewBox="0 0 24 24" fill="none" stroke="#d3dbe1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;">
+            <rect x="3" y="8.5" width="18" height="12" rx="2"/>
+            <path d="M3 8.5l1.3-4h3.4L6.8 8.5"/>
+            <path d="M9.3 8.5l1.3-4h3.4l-1.3 4"/>
+            <path d="M15.6 8.5l1.3-4h3.4l-1.3 4"/>
+            <line x1="3" y1="8.5" x2="21" y2="8.5"/>
+        </svg>
+        <div>等待输入，开启高效质检之旅...</div>
+    </div>
 
     <div class="settings-link">
         <span onclick="resetToken()">重置 API TOKEN</span>
@@ -213,6 +234,16 @@
             const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(titleQuery)}${yearQuery}&language=zh-CN`, {
                 headers: { 'Authorization': `Bearer ${TOKEN}` }
             });
+
+            if (!sRes.ok) {
+                if (sRes.status === 401) {
+                    resultDiv.innerHTML = "🔑 TOKEN 无效或已过期，请点击下方「重置 API TOKEN」后重新输入";
+                } else {
+                    resultDiv.innerHTML = `⚠️ 检索失败：HTTP ${sRes.status}`;
+                }
+                return;
+            }
+
             const sData = await sRes.json();
 
             if (!sData.results?.length) {
@@ -241,9 +272,12 @@
         resultDiv.innerHTML = `
             <div class="candidate-header">找到 ${app.candidates.length} 个可能匹配的结果，请选择正确的一项：</div>
             <div class="candidate-list">
-                ${pageItems.map((r) => `
+                ${pageItems.map((r, i) => `
                     <div class="candidate-item" onclick="showMovieDetail(${r.id})">
-                        <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : 'https://via.placeholder.com/154x231?text=No+Image'}" class="candidate-img">
+                        <div class="candidate-poster-wrap">
+                            <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : 'https://via.placeholder.com/154x231?text=No+Image'}" class="candidate-img">
+                            <span class="candidate-rank">#${start + i + 1}</span>
+                        </div>
                         <div class="candidate-info">
                             <div class="candidate-title">${r.title}</div>
                             <div class="candidate-meta">${r.original_title || ''} · ${r.release_date ? r.release_date.split('-')[0] : '未知年份'}</div>
@@ -306,6 +340,7 @@
             runtimeMinutes,
             runtimeHours: Math.floor(runtimeMinutes / 60),
             runtimeRemainMinutes: runtimeMinutes % 60,
+            hasRuntime: runtimeMinutes > 0, // TMDB 对该片缺少时长数据时 runtime 为 0，需要和"真实时长为0"区分开
             voteAverage: typeof d.vote_average === 'number' ? d.vote_average : 0,
             certification,
             director,
@@ -333,6 +368,14 @@
         }
         const d = await dRes.json();
         return normalizeMovie(d);
+    }
+
+    // 评分色阶：高分暖色、中等维持原黄色、低分转冷灰，一眼就能感知优劣，不用心算数字
+    function scoreBadgeStyle(score) {
+        if (score >= 8) return 'background: linear-gradient(135deg, #f39c12, #e67e22);';
+        if (score >= 6) return 'background: linear-gradient(135deg, #f4d03f, #f1c40f);';
+        if (score > 0) return 'background: linear-gradient(135deg, #95a5a6, #7f8c8d);';
+        return 'background: linear-gradient(135deg, #bdc3c7, #95a5a6);';
     }
 
     // 豆瓣搜索链接：只传片名的话，同名电影/剧集/综艺很容易混在一起。
@@ -376,7 +419,7 @@
                     ${movie.director ? `<div class="director-line"><b>导演</b> ${movie.director}</div>` : ''}
                     ${movie.genres.length ? `<div class="genre-row">${movie.genres.map(g => `<span class="genre-tag">${g}</span>`).join('')}</div>` : ''}
                     <div class="badge-group">
-                        <span class="score-tag">⭐ ${movie.voteAverage.toFixed(1)}</span>
+                        <span class="score-tag" style="${scoreBadgeStyle(movie.voteAverage)}">⭐ ${movie.voteAverage.toFixed(1)}</span>
                         <span class="rating-tag">分级：${movie.certification}</span>
                         <a href="${doubanLink}" target="_blank" class="douban-btn" title="在豆瓣中搜索该电影">
                             <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#00b51d"/><path d="M11 6.5h2v1h-2v-1zm4 1h-6v1h6v-1zm-6 3h6v1h-6v-1zm1 4.5h-2.5v1h1v1.5h-1v1h4v-1h-1v-1.5h1.5l1.5-1.5v-1h-3.5v1h1.5l-1 1zm-3-3v1h8v-1h-8z" fill="#fff"/></svg>
@@ -385,8 +428,10 @@
                     </div>
                     <div class="runtime-panel">
                         <span class="runtime-label">官方核定原始时长</span>
+                        ${movie.hasRuntime ? `
                         <span class="runtime-readout">${movie.runtimeHours}h ${String(movie.runtimeRemainMinutes).padStart(2,'0')}m</span>
                         <span class="runtime-sub">${movie.runtimeMinutes} min</span>
+                        ` : `<span class="runtime-readout" style="font-size:18px; color:#7fa8c9;">暂无数据</span>`}
                     </div>
                     <div class="overview"><strong>剧情大纲：</strong><br>${movie.overview}</div>
                 </div>
