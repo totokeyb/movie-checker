@@ -52,9 +52,8 @@
             top: 0; left: 0; right: 0; bottom: 0;
             background-size: cover;
             background-position: center 20%;
-            /* 💡 核心优化：低模糊度 (4px) 配合适度暗化，完美保留画面构图和主体细节 */
             filter: blur(4px) brightness(0.35); 
-            transform: scale(1.02); /* 极低拉伸，防止背景人物和场景被扯变形 */
+            transform: scale(1.02); 
             z-index: 1;
             opacity: 0;
             transition: opacity 0.6s ease, background-image 0.6s ease;
@@ -69,7 +68,7 @@
 
         /* 当处于沉浸详情模式时，主卡片框架内文字颜色自动调浅，确保高可读性 */
         .container.immersive-mode {
-            background: #1c2b3a; /* 沉浸状态下的暗底过渡色 */
+            background: #1c2b3a; 
             color: #f5f7fa;
         }
 
@@ -100,7 +99,6 @@
 
         .info { flex: 1; min-width: 300px; }
         
-        /* 沉浸模式下的标题与元数据字色微调 */
         .title { font-size: 28px; font-weight: 800; color: var(--dark); margin: 0; letter-spacing: -0.5px; transition: color 0.3s; }
         .immersive-mode .title { color: #ffffff; }
         
@@ -137,10 +135,22 @@
             position: relative; overflow: hidden;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
+        
+        /* 📐 重新设计：硬核工业风物理刻度尺装饰 */
         .runtime-panel::after {
-            content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px;
-            background-image: repeating-linear-gradient(90deg, rgba(127,168,201,0.4) 0px, rgba(127,168,201,0.4) 1px, transparent 1px, transparent 8px);
+            content: ""; 
+            position: absolute; 
+            left: 0; right: 0; bottom: 0; 
+            height: 12px; 
+            /* 叠加两层渐变：第一层是每隔 100px 出现的高 8px 长刻度，第二层是每隔 10px 出现的高 4px 短刻度 */
+            background-image: 
+                linear-gradient(90deg, rgba(127,168,201,0.7) 1.5px, transparent 1.5px),
+                linear-gradient(90deg, rgba(127,168,201,0.3) 1px, transparent 1px);
+            background-size: 100px 8px, 10px 4px; 
+            background-repeat: repeat-x;
+            background-position: bottom left;
         }
+
         .runtime-label { font-size: 11px; letter-spacing: 1.5px; color: #7fa8c9; text-transform: uppercase; font-weight: 700; flex-basis: 100%; }
         .runtime-readout { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--readout); letter-spacing: 0.5px; text-shadow: 0 0 18px rgba(91,227,255,0.35); animation: fadeIn 0.4s ease; }
         .runtime-sub { font-family: var(--mono); font-size: 13px; color: #8ea6ba; }
