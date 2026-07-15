@@ -90,7 +90,7 @@
         .cast-item a:hover { transform: translateY(-5px); }
         .cast-img { width: 100%; height: 150px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 8px; border: 2px solid transparent; }
         .cast-item a:hover .cast-img { border-color: var(--tmdb-blue); }
-        .cast-name { font-size: 13px; font-weight: bold; display: block; }
+        .cast-name { font-size: 13px; font-weight: bold; display: block; color: var(--dark); }
         .cast-role { font-size: 11px; color: #999; }
         .cast-toggle { text-align: center; margin-top: 14px; }
         .cast-toggle button {
@@ -476,7 +476,7 @@
                     <div class="overview"><strong>剧情大纲：</strong><br>${movie.overview}</div>
                 </div>
             </div>
-            <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px;">🎬 主要演职人员</div>
+            <div style="font-weight:bold; margin-bottom:15px; border-bottom:2px solid #f0f0f0; padding-bottom:8px; color: var(--dark);">🎬 主要演职人员</div>
             <div class="cast-list" id="castList">${movie.cast.map(p => `
                 <div class="cast-item">
                     <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
