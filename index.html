@@ -104,7 +104,7 @@
             display: flex; gap: 15px; align-items: center; padding: 10px;
             border: 2px solid #eee; border-radius: 12px; cursor: pointer; transition: 0.2s; text-align: left;
         }
-        .candidate-item:hover { border-color: var(--tmdb-blue); background: #f5fbfe; }
+        .candidate-item:hover { border-color: var(--tmdb-blue); background: #f5fbfe; transform: translateY(-5px); box-shadow: 0 8px 18px rgba(1,180,228,0.15); }
         .candidate-img { width: 55px; height: 82px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: #eee; }
         .candidate-info { flex: 1; min-width: 0; }
         .candidate-title { font-weight: bold; font-size: 16px; color: var(--dark); }
@@ -120,6 +120,18 @@
         .back-btn svg { flex-shrink: 0; transition: transform 0.2s; }
         .back-btn:hover { background: #e3f4fb; color: var(--tmdb-blue); }
         .back-btn:hover svg { transform: translateX(-2px); }
+
+        /* --- 分页控件 --- */
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 18px; flex-wrap: wrap; }
+        .page-btn {
+            min-width: 34px; height: 34px; padding: 0 8px;
+            border: 2px solid #eee; border-radius: 8px; background: #fff;
+            color: #7f95a8; font-size: 13px; font-weight: 700; cursor: pointer;
+            transition: 0.2s; font-family: inherit;
+        }
+        .page-btn:hover:not(:disabled) { border-color: var(--tmdb-blue); color: var(--tmdb-blue); }
+        .page-btn.active { background: var(--tmdb-blue); border-color: var(--tmdb-blue); color: #fff; }
+        .page-btn:disabled { opacity: 0.35; cursor: default; }
 
         @media (max-width: 600px) { .poster-box { width: 100%; } .search-box { flex-wrap: wrap; } }
     </style>
@@ -146,9 +158,11 @@
     // 方便以后加收藏/历史记录之类的功能时有地方挂钩，
     // 但不引入完整状态机——这个工具的交互路径还是线性的，不值得上重架构。
     const app = {
-        candidates: [],      // 当前这次搜索的候选影片列表
+        candidates: [],      // 当前这次搜索的候选影片列表（全部，不做条数截断）
+        candidatePage: 1,    // 候选列表当前页码（从 1 开始）
         selectedMovie: null  // 当前展示详情的影片（规范化后的数据）
     };
+    const CANDIDATES_PER_PAGE = 10;
 
     window.onload = function() {
         if (!TOKEN) askForToken();
@@ -206,7 +220,8 @@
                 return;
             }
 
-            app.candidates = sData.results.slice(0, 8);
+            app.candidates = sData.results;
+            app.candidatePage = 1;
 
             // 默认直接展示最匹配的结果（TMDB 排第一的那个），省去多余点击；
             // 选错了可以在详情页点“返回候选列表”手动挑，逻辑见 renderMovieDetail 里的 backLink。
@@ -214,13 +229,19 @@
         } catch (err) { resultDiv.innerHTML = `⚠️ 检索失败`; }
     }
 
-    // 展示候选列表，供用户手动选择正确的一部
+    // 展示候选列表，供用户手动选择正确的一部；每页最多 CANDIDATES_PER_PAGE 条，翻页不重新请求
     function renderCandidateList() {
         const resultDiv = document.getElementById('result');
+        const totalPages = Math.max(1, Math.ceil(app.candidates.length / CANDIDATES_PER_PAGE));
+        app.candidatePage = Math.min(Math.max(1, app.candidatePage), totalPages);
+
+        const start = (app.candidatePage - 1) * CANDIDATES_PER_PAGE;
+        const pageItems = app.candidates.slice(start, start + CANDIDATES_PER_PAGE);
+
         resultDiv.innerHTML = `
             <div class="candidate-header">找到 ${app.candidates.length} 个可能匹配的结果，请选择正确的一项：</div>
             <div class="candidate-list">
-                ${app.candidates.map((r, i) => `
+                ${pageItems.map((r) => `
                     <div class="candidate-item" onclick="showMovieDetail(${r.id})">
                         <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : 'https://via.placeholder.com/154x231?text=No+Image'}" class="candidate-img">
                         <div class="candidate-info">
@@ -231,7 +252,29 @@
                     </div>
                 `).join('')}
             </div>
+            ${totalPages > 1 ? renderPagination(totalPages) : ''}
         `;
+    }
+
+    // 生成分页按钮：上一页 / 页码 / 下一页
+    function renderPagination(totalPages) {
+        const cur = app.candidatePage;
+        const pageBtns = [];
+        for (let p = 1; p <= totalPages; p++) {
+            pageBtns.push(`<button class="page-btn${p === cur ? ' active' : ''}" onclick="goToCandidatePage(${p})">${p}</button>`);
+        }
+        return `
+            <div class="pagination">
+                <button class="page-btn" onclick="goToCandidatePage(${cur - 1})" ${cur === 1 ? 'disabled' : ''}>‹</button>
+                ${pageBtns.join('')}
+                <button class="page-btn" onclick="goToCandidatePage(${cur + 1})" ${cur === totalPages ? 'disabled' : ''}>›</button>
+            </div>
+        `;
+    }
+
+    function goToCandidatePage(page) {
+        app.candidatePage = page;
+        renderCandidateList();
     }
 
     // --- 数据规范层 ---
