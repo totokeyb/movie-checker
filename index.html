@@ -361,10 +361,17 @@
         let certification = 'NR';
         try {
             const releaseResults = d.release_dates?.results || [];
-            const target = releaseResults.find(r => r.iso_3166_1 === 'CN')
-                || releaseResults.find(r => r.iso_3166_1 === 'US')
-                || releaseResults[0];
-            certification = target?.release_dates?.find(rd => rd.certification !== '')?.certification || 'NR';
+            // 找到某个国家的记录不代表它有实际分级——中国大陆没有分级制度，
+            // CN 记录几乎总是存在但 certification 为空字符串，需要按优先级往下找
+            // 直到某个国家真的给出了非空分级，而不是命中 CN 就直接停下。
+            const certFromCountry = (iso) => {
+                const country = releaseResults.find(r => r.iso_3166_1 === iso);
+                return country?.release_dates?.find(rd => rd.certification !== '')?.certification;
+            };
+            const certFromAny = releaseResults
+                .map(r => r.release_dates?.find(rd => rd.certification !== '')?.certification)
+                .find(Boolean);
+            certification = certFromCountry('CN') || certFromCountry('US') || certFromAny || 'NR';
         } catch (e) {
             certification = 'NR';
         }
