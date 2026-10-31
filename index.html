@@ -1,4 +1,29 @@
 <!DOCTYPE html>
+<!--
+  电影时长质检仪（move.html）
+
+  v1.1.0  支持电视剧 + 一批稳健性优化（次版本：新增看得见的功能）
+    新增
+    - 现在电影和电视剧都能搜：搜索改用 TMDB 的 /search/multi，自动过滤掉"人物"结果
+    - 候选列表和详情页会标出 🎞️ 电影 / 📺 剧集
+    - 剧集详情：显示"单集时长"（episode_run_time 为空时用最近一集的时长兜底）、共几季几集、
+      连载状态、主创（剧集一般没有导演）、分级（走 content_ratings）；海报链接跳 /tv/ 页面
+    - 输入了年份时（如"片名 2024"）改为"年份对得上的排前面"，而不是严格只留这一年
+      （multi 搜索没有年份参数，剧集的年份是首播年份）
+    优化
+    - 所有 TMDB 返回的文字（片名/简介/角色名等）进页面前都做 HTML 转义，避免被特殊字符搞乱页面
+    - 连续操作时丢弃过期请求（快速换词搜索、快速点候选），不会出现旧结果盖掉新结果
+    - 回车搜索会忽略中文输入法选词时的那一下回车，不再选词就触发搜索
+    - 报错更具体：令牌无效 / 请求太频繁 / 网络错误（可能需要代理）/ 其他 HTTP 状态
+    - 只输入一个年份（如 2012）时当作片名搜索，不再因为片名为空而请求失败
+    - 4 处重复的 fetch 合并成一个 tmdb() 函数；同时支持 v3 的 32 位 API Key
+    - 没有中文简介时自动补英文简介并标注
+    - 图片加载失败依次退到 ./default-avatar.jpg、内嵌占位图，不再依赖外部文件才能不显示裂图
+    - 候选总数在没加载完时显示"约 N 个"，加载完后显示实数（TMDB 的总数里含人物，之前会偏大）
+    - 候选翻页逻辑简化，加载失败时用已有结果，不卡住
+
+  v1.0.0  初始版本，只能搜电影（版本号为补记）
+-->
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -93,9 +118,27 @@
         .movie-card { display: flex; align-items: flex-start; gap: 25px; margin-bottom: 25px; flex-wrap: wrap; animation: fadeIn 0.5s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        .poster-box { flex-shrink: 0; cursor: pointer; border-radius: 15px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.3); width: 220px; transition: 0.3s; }
+        /* 海报容器：增加深色背景，配合 overflow:hidden 防止白边漏出 */
+        .poster-box { 
+            flex-shrink: 0; 
+            cursor: pointer; 
+            border-radius: 15px; 
+            overflow: hidden; 
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3); 
+            width: 220px; 
+            transition: 0.3s; 
+            background: #1c2b3a; /* 垫底暗色背景 */
+        }
         .poster-box:hover { transform: scale(1.03); box-shadow: 0 12px 25px rgba(0,0,0,0.4); }
-        .poster { width: 100%; height: auto; display: block; }
+        
+        /* 💡 海报图片：微调 scale(1.01) 彻底消灭亚像素计算产生的白色微缝 */
+        .poster { 
+            width: 100%; 
+            height: auto; 
+            display: block; 
+            transform: scale(1.01); 
+            transform-origin: center;
+        }
 
         .info { flex: 1; min-width: 300px; }
         
@@ -136,13 +179,12 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
         
-        /* 📐 重新设计：硬核工业风物理刻度尺装饰 */
+        /* 📐 仪表盘底部精密物理刻度尺 */
         .runtime-panel::after {
             content: ""; 
             position: absolute; 
             left: 0; right: 0; bottom: 0; 
             height: 12px; 
-            /* 叠加两层渐变：第一层是每隔 100px 出现的高 8px 长刻度，第二层是每隔 10px 出现的高 4px 短刻度 */
             background-image: 
                 linear-gradient(90deg, rgba(127,168,201,0.7) 1.5px, transparent 1.5px),
                 linear-gradient(90deg, rgba(127,168,201,0.3) 1px, transparent 1px);
@@ -168,7 +210,20 @@
         .cast-list.expanded .cast-item:nth-child(n+7) { display: block; }
         .cast-item a { text-decoration: none; color: inherit; display: block; transition: 0.3s; }
         .cast-item a:hover { transform: translateY(-5px); }
-        .cast-img { width: 100%; height: 150px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); margin-bottom: 8px; border: 2px solid transparent; }
+
+        /* 演职人员头像：同步增加溢出处理，避免出现白边 */
+        .cast-img { 
+            width: 100%; 
+            height: 150px; 
+            object-fit: cover; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15); 
+            margin-bottom: 8px; 
+            border: 2px solid transparent; 
+            background: #1c2b3a; 
+            transform: scale(1.01); 
+            transform-origin: center;
+        }
         .cast-item a:hover .cast-img { border-color: var(--tmdb-blue); }
         
         .cast-name { font-size: 13px; font-weight: bold; display: block; color: var(--dark); transition: color 0.3s; }
@@ -205,7 +260,17 @@
             font-family: var(--mono); font-size: 10px; font-weight: 700;
             padding: 2px 6px; border-radius: 6px; letter-spacing: 0.3px;
         }
-        .candidate-img { width: 55px; height: 82px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: #eee; }
+        
+        /* 候选区小海报同步抗白缝 */
+        .candidate-img { 
+            width: 55px; 
+            height: 82px; 
+            object-fit: cover; 
+            border-radius: 6px; 
+            flex-shrink: 0; 
+            background: #1c2b3a; 
+            transform: scale(1.01);
+        }
         .candidate-info { flex: 1; min-width: 0; }
         .candidate-title { font-weight: bold; font-size: 16px; color: var(--dark); }
         .candidate-meta { font-size: 12px; color: #7f8c8d; margin: 2px 0 4px; }
@@ -248,9 +313,9 @@
     <!-- 包装一层用于提升图层层级的内容容器 -->
     <div class="container-content">
         <div class="search-box">
-            <input type="text" id="movieName" placeholder="粘贴电影标题或输入片名..." autocomplete="off">
+            <input type="text" id="movieName" placeholder="粘贴电影/剧集标题或输入片名..." autocomplete="off">
             <button class="paste-btn" onclick="handlePaste()" title="粘贴并搜索">📋</button>
-            <button class="search-btn" onclick="searchMovie()">核查</button>
+            <button class="search-btn" onclick="searchMedia()">核查</button>
         </div>
         
         <div id="result" style="text-align:center; padding: 46px 0; color:#bbb;">
@@ -274,16 +339,47 @@
     let TOKEN = localStorage.getItem('tmdb_access_token');
 
     const app = {
-        candidates: [],      
-        candidatePage: 1,    
-        selectedMovie: null, 
-        tmdbPage: 1,         
-        tmdbTotalKnown: 0,   
-        searchTitleQuery: '',
-        searchYearQuery: ''
+        candidates: [],      // 已加载的候选（电影 + 剧集，已过滤掉人物）
+        candidatePage: 1,
+        selectedMedia: null,
+        tmdbPage: 1,         // 已加载到 TMDB 的第几页
+        tmdbTotalPages: 1,   // TMDB 总页数（已按 MAX_TMDB_PAGES 封顶）
+        tmdbTotalResults: 0,
+        exhausted: false,    // TMDB 的结果是否已经全部加载完
+        query: '',
+        year: '',
+        seq: 0               // 异步请求序号：新操作开始后，旧请求回来的结果直接丢弃
     };
     const CANDIDATES_PER_PAGE = 10;
     const MAX_TMDB_PAGES = 5;
+
+    const TYPE_LABEL = { movie: '🎞️ 电影', tv: '📺 剧集' };
+    const STATUS_LABEL = {
+        'Returning Series': '连载中', 'Ended': '已完结', 'Canceled': '已取消',
+        'In Production': '制作中', 'Planned': '计划中', 'Pilot': '试播'
+    };
+
+    // 图片全部加载失败时的最后兜底（内嵌 SVG，不依赖外部文件）
+    const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="150" viewBox="0 0 100 150">' +
+        '<rect width="100" height="150" fill="#1c2b3a"/><circle cx="50" cy="56" r="16" fill="#3a5068"/>' +
+        '<path d="M20 124c0-18 14-30 30-30s30 12 30 30z" fill="#3a5068"/></svg>');
+
+    // 图片加载失败：先退到 ./default-avatar.jpg，它也没有就用内嵌占位图
+    function imgFallback(img) {
+        if (img.dataset.step === '2') { img.onerror = null; return; }
+        if (!img.dataset.step) {
+            img.dataset.step = '1';
+            if (!/default-avatar\.jpg$/.test(img.src)) { img.src = './default-avatar.jpg'; return; }
+        }
+        img.dataset.step = '2';
+        img.src = PLACEHOLDER;
+    }
+
+    // HTML 转义：TMDB 的片名、简介、角色名都是网友可编辑的内容，不能直接塞进 innerHTML
+    function esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
 
     window.onload = function() {
         if (!TOKEN) askForToken();
@@ -291,11 +387,13 @@
     };
 
     function askForToken() {
-        const input = prompt("请输入您的 TMDB API TOKEN (Read Access Token):");
-        if (input && input.trim().length > 50) {
+        const input = prompt("请输入您的 TMDB API TOKEN（eyJ 开头的 Read Access Token，或 32 位 API Key）:");
+        if (input && input.trim().length >= 30) {
             localStorage.setItem('tmdb_access_token', input.trim());
             TOKEN = input.trim();
             location.reload();
+        } else if (input) {
+            alert("这看起来不是有效的 TMDB 令牌，请检查后重试。");
         }
     }
 
@@ -306,12 +404,35 @@
         }
     }
 
+    // 统一的 TMDB 请求：v4 令牌（eyJ 开头）走 Bearer 头，v3 的 32 位 Key 走 api_key 参数
+    async function tmdb(path, params = {}) {
+        const url = new URL('https://api.themoviedb.org/3' + path);
+        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+        const headers = {};
+        if (TOKEN.startsWith('eyJ')) headers.Authorization = `Bearer ${TOKEN}`;
+        else url.searchParams.set('api_key', TOKEN);
+        const res = await fetch(url, { headers });
+        if (!res.ok) {
+            const e = new Error(`HTTP ${res.status}`);
+            e.status = res.status;
+            throw e;
+        }
+        return res.json();
+    }
+
+    function errorHtml(err, prefix = '检索失败') {
+        if (err.status === 401) return "🔑 TOKEN 无效或已过期，请点击下方「重置 API TOKEN」后重新输入";
+        if (err.status === 429) return "⏳ 请求太频繁了，稍等几秒再试";
+        if (err instanceof TypeError) return `⚠️ ${prefix}：网络错误（访问 TMDB 可能需要代理）`;
+        return `⚠️ ${prefix}：${esc(err.message)}`;
+    }
+
     async function handlePaste() {
         try {
             const text = await navigator.clipboard.readText();
             if (text) {
                 document.getElementById('movieName').value = text;
-                searchMovie();
+                searchMedia();
             }
         } catch (e) { alert("无法访问剪贴板。"); }
     }
@@ -330,75 +451,102 @@
         }
     }
 
-    async function searchMovie() {
+    // 拆出"片名"和"末尾年份"。只输入了一个年份（如 2012）时，把它当片名，不当年份
+    function parseQuery(inputVal) {
+        const cleanInput = inputVal.replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+        const yearMatch = cleanInput.match(/\b(19|20)\d{2}$/);
+        const title = yearMatch ? cleanInput.replace(yearMatch[0], '').trim() : cleanInput;
+        if (!title) return { title: cleanInput, year: '' };
+        return { title, year: yearMatch ? yearMatch[0] : '' };
+    }
+
+    const yearOfResult = r => (r.release_date || r.first_air_date || '').slice(0, 4);
+
+    // 只留电影和剧集（multi 搜索还会混进"人物"）；输入了年份时，年份对得上的排前面
+    function pickMedia(results, year) {
+        const list = (results || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv');
+        if (!year) return list;
+        return list.filter(r => yearOfResult(r) === year).concat(list.filter(r => yearOfResult(r) !== year));
+    }
+
+    function addCandidates(results) {
+        const seen = new Set(app.candidates.map(r => r.media_type + r.id));
+        pickMedia(results, app.year).forEach(r => {
+            const key = r.media_type + r.id;
+            if (!seen.has(key)) { seen.add(key); app.candidates.push(r); }
+        });
+    }
+
+    function fetchSearchPage(page) {
+        return tmdb('/search/multi', { query: app.query, language: 'zh-CN', include_adult: 'false', page });
+    }
+
+    async function searchMedia() {
         if (!TOKEN) { askForToken(); return; }
         const resultDiv = document.getElementById('result');
         const inputVal = document.getElementById('movieName').value.trim();
         if (!inputVal) return;
 
+        const seq = ++app.seq;
         resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在为您检索官方原始档案...</div>";
         updateContainerBackdrop(null); // 搜索新片时重置局部背景
 
         try {
-            let cleanInput = inputVal.replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
-            let yearMatch = cleanInput.match(/\b(19|20)\d{2}$/);
-            let titleQuery = yearMatch ? cleanInput.replace(yearMatch[0], "").trim() : cleanInput;
-            let yearQuery = yearMatch ? `&primary_release_year=${yearMatch[0]}` : "";
+            const q = parseQuery(inputVal);
+            app.query = q.title;
+            app.year = q.year;
+            app.candidates = [];
 
-            const sRes = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(titleQuery)}${yearQuery}&language=zh-CN&page=1`, {
-                headers: { 'Authorization': `Bearer ${TOKEN}` }
-            });
+            const sData = await fetchSearchPage(1);
+            if (seq !== app.seq) return;
 
-            if (!sRes.ok) {
-                if (sRes.status === 401) {
-                    resultDiv.innerHTML = "🔑 TOKEN 无效或已过期，请点击下方「重置 API TOKEN」后重新输入";
-                } else {
-                    resultDiv.innerHTML = `⚠️ 检索失败：HTTP ${sRes.status}`;
-                }
+            addCandidates(sData.results);
+            if (!app.candidates.length) {
+                resultDiv.innerHTML = "❌ 未找到该影片或剧集，请微调关键词";
                 return;
             }
 
-            const sData = await sRes.json();
-
-            if (!sData.results?.length) {
-                resultDiv.innerHTML = "❌ 未找到该影片，请微调关键词";
-                return;
-            }
-
-            app.candidates = sData.results;
             app.candidatePage = 1;
             app.tmdbPage = 1;
-            app.tmdbTotalKnown = Math.min(sData.total_results || sData.results.length, MAX_TMDB_PAGES * 20);
-            app.searchTitleQuery = titleQuery;
-            app.searchYearQuery = yearQuery;
+            app.tmdbTotalPages = Math.min(sData.total_pages || 1, MAX_TMDB_PAGES);
+            app.tmdbTotalResults = sData.total_results || 0;
+            app.exhausted = app.tmdbPage >= app.tmdbTotalPages;
 
-            showMovieDetail(app.candidates[0].id);
-        } catch (err) { resultDiv.innerHTML = `⚠️ 检索失败`; }
+            showMediaDetail(app.candidates[0].media_type, app.candidates[0].id);
+        } catch (err) {
+            if (seq === app.seq) resultDiv.innerHTML = errorHtml(err);
+        }
+    }
+
+    // 候选总数：没加载完时只能估算（TMDB 的总数里还含人物），加载完就是实数
+    function candidateTotal() {
+        return app.exhausted ? app.candidates.length : Math.min(app.tmdbTotalResults, MAX_TMDB_PAGES * 20);
     }
 
     function renderCandidateList() {
         updateContainerBackdrop(null); // 返回列表时，容器背景还原为白底
 
         const resultDiv = document.getElementById('result');
-        const totalPages = Math.max(1, Math.ceil(app.tmdbTotalKnown / CANDIDATES_PER_PAGE));
+        const total = candidateTotal();
+        const totalPages = Math.max(1, Math.ceil(total / CANDIDATES_PER_PAGE));
         app.candidatePage = Math.min(Math.max(1, app.candidatePage), totalPages);
 
         const start = (app.candidatePage - 1) * CANDIDATES_PER_PAGE;
         const pageItems = app.candidates.slice(start, start + CANDIDATES_PER_PAGE);
 
         resultDiv.innerHTML = `
-            <div class="candidate-header">找到 ${app.tmdbTotalKnown} 个可能匹配的结果，请选择正确的一项：</div>
+            <div class="candidate-header">找到${app.exhausted ? '' : '约'} ${total} 个可能匹配的结果，请选择正确的一项：</div>
             <div class="candidate-list">
                 ${pageItems.map((r, i) => `
-                    <div class="candidate-item" onclick="showMovieDetail(${r.id})">
+                    <div class="candidate-item" onclick="showMediaDetail('${r.media_type}', ${r.id})">
                         <div class="candidate-poster-wrap">
-                            <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : './default-avatar.jpg'}" class="candidate-img" onerror="this.onerror=null; this.src='./default-avatar.jpg';">
+                            <img src="${r.poster_path ? 'https://image.tmdb.org/t/p/w154'+r.poster_path : './default-avatar.jpg'}" class="candidate-img" onerror="imgFallback(this)">
                             <span class="candidate-rank">#${start + i + 1}</span>
                         </div>
                         <div class="candidate-info">
-                            <div class="candidate-title">${r.title}</div>
-                            <div class="candidate-meta">${r.original_title || ''} · ${r.release_date ? r.release_date.split('-')[0] : '未知年份'}</div>
-                            <div class="candidate-overview">${r.overview || '暂无简介。'}</div>
+                            <div class="candidate-title">${esc(r.title || r.name || '未知片名')}</div>
+                            <div class="candidate-meta">${TYPE_LABEL[r.media_type]} · ${esc(r.original_title || r.original_name || '')} · ${yearOfResult(r) || '未知年份'}</div>
+                            <div class="candidate-overview">${esc(r.overview || '暂无简介。')}</div>
                         </div>
                     </div>
                 `).join('')}
@@ -422,71 +570,97 @@
         `;
     }
 
-    async function fetchSearchPage(page) {
-        const res = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(app.searchTitleQuery)}${app.searchYearQuery}&language=zh-CN&page=${page}`, {
-            headers: { 'Authorization': `Bearer ${TOKEN}` }
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-    }
-
     async function goToCandidatePage(page) {
-        const neededCount = page * CANDIDATES_PER_PAGE;
-        const canFetchMore = app.tmdbPage < MAX_TMDB_PAGES && app.candidates.length < app.tmdbTotalKnown;
+        const seq = ++app.seq;
+        const needed = page * CANDIDATES_PER_PAGE;
 
-        if (app.candidates.length < neededCount && canFetchMore) {
+        if (app.candidates.length < needed && !app.exhausted) {
             const resultDiv = document.getElementById('result');
             resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在加载更多候选结果...</div>";
-            while (app.candidates.length < neededCount && app.tmdbPage < MAX_TMDB_PAGES && app.candidates.length < app.tmdbTotalKnown) {
-                try {
+            try {
+                while (app.candidates.length < needed && !app.exhausted) {
                     const nextData = await fetchSearchPage(app.tmdbPage + 1);
+                    if (seq !== app.seq) return;
                     app.tmdbPage++;
-                    app.candidates = app.candidates.concat(nextData.results || []);
-                } catch (e) { break; }
-            }
+                    addCandidates(nextData.results);
+                    app.exhausted = app.tmdbPage >= app.tmdbTotalPages;
+                }
+            } catch (e) { /* 加载失败就先用已经有的 */ }
         }
 
+        if (seq !== app.seq) return;
         app.candidatePage = page;
         renderCandidateList();
     }
 
-    function normalizeMovie(d) {
-        const runtimeMinutes = typeof d.runtime === 'number' ? d.runtime : 0;
+    // 电影和剧集的数据结构不一样，统一整理成同一种格式
+    function normalizeMedia(d, type) {
+        const isTV = type === 'tv';
 
+        // 时长：电影是 runtime；剧集是"单集时长"，episode_run_time 经常是空的，就用最近一集的时长兜底
+        let runtimeMinutes = 0;
+        if (isTV) {
+            runtimeMinutes = (d.episode_run_time || []).find(n => n > 0)
+                || d.last_episode_to_air?.runtime
+                || d.next_episode_to_air?.runtime
+                || 0;
+        } else {
+            runtimeMinutes = d.runtime || 0;
+        }
+        if (typeof runtimeMinutes !== 'number') runtimeMinutes = 0;
+
+        // 分级：优先中国，其次美国，再随便取一个
         let certification = 'NR';
         try {
-            const releaseResults = d.release_dates?.results || [];
-            const certFromCountry = (iso) => {
-                const country = releaseResults.find(r => r.iso_3166_1 === iso);
-                return country?.release_dates?.find(rd => rd.certification !== '')?.certification;
-            };
-            const certFromAny = releaseResults
-                .map(r => r.release_dates?.find(rd => rd.certification !== '')?.certification)
-                .find(Boolean);
-            certification = certFromCountry('CN') || certFromCountry('US') || certFromAny || 'NR';
+            if (isTV) {
+                const rs = d.content_ratings?.results || [];
+                const byCountry = (iso) => rs.find(r => r.iso_3166_1 === iso && r.rating)?.rating;
+                certification = byCountry('CN') || byCountry('US') || rs.find(r => r.rating)?.rating || 'NR';
+            } else {
+                const releaseResults = d.release_dates?.results || [];
+                const certFromCountry = (iso) => {
+                    const country = releaseResults.find(r => r.iso_3166_1 === iso);
+                    return country?.release_dates?.find(rd => rd.certification !== '')?.certification;
+                };
+                const certFromAny = releaseResults
+                    .map(r => r.release_dates?.find(rd => rd.certification !== '')?.certification)
+                    .find(Boolean);
+                certification = certFromCountry('CN') || certFromCountry('US') || certFromAny || 'NR';
+            }
         } catch (e) {
             certification = 'NR';
         }
 
-        const director = (d.credits?.crew || []).find(c => c.job === 'Director')?.name || '';
-        const genres = (d.genres || []).map(g => g.name).filter(Boolean);
+        // 电影显示导演；剧集一般没有导演，显示主创
+        const creatorLabel = isTV ? '主创' : '导演';
+        const creator = isTV
+            ? (d.created_by || []).map(c => c.name).filter(Boolean).join('、')
+            : ((d.credits?.crew || []).find(c => c.job === 'Director')?.name || '');
+
+        const date = isTV ? d.first_air_date : d.release_date;
 
         return {
+            type,
             id: d.id,
-            title: d.title || '未知片名',
-            originalTitle: d.original_title || '',
-            year: d.release_date ? d.release_date.split('-')[0] : '未知',
+            title: (isTV ? d.name : d.title) || '未知片名',
+            originalTitle: (isTV ? d.original_name : d.original_title) || '',
+            year: date ? date.split('-')[0] : '未知',
             runtimeMinutes,
             runtimeHours: Math.floor(runtimeMinutes / 60),
             runtimeRemainMinutes: runtimeMinutes % 60,
             hasRuntime: runtimeMinutes > 0,
             voteAverage: typeof d.vote_average === 'number' ? d.vote_average : 0,
             certification,
-            director,
-            genres,
+            creatorLabel,
+            creator,
+            genres: (d.genres || []).map(g => g.name).filter(Boolean),
             posterPath: d.poster_path || null,
-            backdropPath: d.backdrop_path || null, 
-            overview: d.overview || '暂无详细记载。',
+            backdropPath: d.backdrop_path || null,
+            overview: d.overview || '',
+            overviewIsEnglish: false,
+            seasons: isTV ? (d.number_of_seasons || 0) : 0,
+            episodes: isTV ? (d.number_of_episodes || 0) : 0,
+            statusText: isTV ? (STATUS_LABEL[d.status] || '') : '',
             cast: (d.credits?.cast || []).map(p => ({
                 id: p.id,
                 name: p.name || '未知演员',
@@ -496,15 +670,20 @@
         };
     }
 
-    async function fetchMovieDetail(movieId) {
-        const dRes = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?language=zh-CN&append_to_response=release_dates,credits`, {
-            headers: { 'Authorization': `Bearer ${TOKEN}` }
-        });
-        if (!dRes.ok) {
-            throw new Error(`TMDB 详情请求失败：HTTP ${dRes.status}`);
+    async function fetchMediaDetail(type, id) {
+        const append = type === 'tv' ? 'content_ratings,credits' : 'release_dates,credits';
+        const d = await tmdb(`/${type}/${id}`, { language: 'zh-CN', append_to_response: append });
+        const media = normalizeMedia(d, type);
+
+        // 没有中文简介时，补一份英文的，总比"暂无记载"强
+        if (!media.overview) {
+            try {
+                const en = await tmdb(`/${type}/${id}`, { language: 'en-US' });
+                if (en.overview) { media.overview = en.overview; media.overviewIsEnglish = true; }
+            } catch (e) { /* 补不到就算了 */ }
         }
-        const d = await dRes.json();
-        return normalizeMovie(d);
+        if (!media.overview) media.overview = '暂无详细记载。';
+        return media;
     }
 
     function scoreBadgeStyle(score) {
@@ -514,10 +693,12 @@
         return 'background: linear-gradient(135deg, #bdc3c7, #95a5a6);';
     }
 
-    function buildDoubanSearchLink(movie) {
-        const hasYear = movie.year && movie.year !== '未知';
-        const searchText = hasYear ? `${movie.title} ${movie.year}` : movie.title;
-        return `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(searchText)}&cat=1002`;
+    function buildDoubanSearchLink(media) {
+        const hasYear = media.year && media.year !== '未知';
+        const searchText = hasYear ? `${media.title} ${media.year}` : media.title;
+        // cat=1002 只限电影；剧集不带分类，让豆瓣自己在影视里找
+        const cat = media.type === 'movie' ? '&cat=1002' : '';
+        return `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(searchText)}${cat}`;
     }
 
     function toggleCastList() {
@@ -528,12 +709,13 @@
         btn.textContent = expanded ? '收起 ▲' : `查看全部 ${list.children.length} 位演职人员 ▼`;
     }
 
-    function renderMovieDetail(movie) {
+    function renderMediaDetail(media) {
         // 渲染详情时加载框架局部背景
-        updateContainerBackdrop(movie.backdropPath);
+        updateContainerBackdrop(media.backdropPath);
 
+        const isTV = media.type === 'tv';
         const resultDiv = document.getElementById('result');
-        const doubanLink = buildDoubanSearchLink(movie);
+        const doubanLink = buildDoubanSearchLink(media);
         const backLink = `<div style="text-align:left;">
                     <button class="back-btn" onclick="renderCandidateList()" title="重新选择正确的一项">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -541,65 +723,75 @@
                     </button>
                </div>`;
 
+        const seriesInfo = isTV
+            ? [media.seasons ? `共 ${media.seasons} 季` : '', media.episodes ? `${media.episodes} 集` : '', media.statusText].filter(Boolean).join(' · ')
+            : '';
+
         resultDiv.innerHTML = `
             ${backLink}
             <div class="movie-card">
-                <a href="https://www.themoviedb.org/movie/${movie.id}?language=zh-CN" target="_blank" class="poster-box" title="点击查看 TMDB 详情">
-                    <img src="${movie.posterPath ? 'https://image.tmdb.org/t/p/w500'+movie.posterPath : './default-avatar.jpg'}" class="poster" onerror="this.onerror=null; this.src='./default-avatar.jpg';">
+                <a href="https://www.themoviedb.org/${media.type}/${media.id}?language=zh-CN" target="_blank" class="poster-box" title="点击查看 TMDB 详情">
+                    <img src="${media.posterPath ? 'https://image.tmdb.org/t/p/w500'+media.posterPath : './default-avatar.jpg'}" class="poster" onerror="imgFallback(this)">
                 </a>
                 <div class="info">
-                    <div class="title">${movie.title}</div>
-                    <div class="meta">${movie.originalTitle} · ${movie.year}</div>
-                    ${movie.director ? `<div class="director-line"><b>导演</b> ${movie.director}</div>` : ''}
-                    ${movie.genres.length ? `<div class="genre-row">${movie.genres.map(g => `<span class="genre-tag">${g}</span>`).join('')}</div>` : ''}
+                    <div class="title">${esc(media.title)}</div>
+                    <div class="meta">${TYPE_LABEL[media.type]} · ${esc(media.originalTitle)} · ${esc(media.year)}</div>
+                    ${seriesInfo ? `<div class="director-line">${esc(seriesInfo)}</div>` : ''}
+                    ${media.creator ? `<div class="director-line"><b>${media.creatorLabel}</b> ${esc(media.creator)}</div>` : ''}
+                    ${media.genres.length ? `<div class="genre-row">${media.genres.map(g => `<span class="genre-tag">${esc(g)}</span>`).join('')}</div>` : ''}
                     <div class="badge-group">
-                        <span class="score-tag" style="${scoreBadgeStyle(movie.voteAverage)}">⭐ ${movie.voteAverage.toFixed(1)}</span>
-                        <span class="rating-tag">分级：${movie.certification}</span>
-                        <a href="${doubanLink}" target="_blank" class="douban-btn" title="在豆瓣中搜索该电影">
+                        <span class="score-tag" style="${scoreBadgeStyle(media.voteAverage)}">⭐ ${media.voteAverage.toFixed(1)}</span>
+                        <span class="rating-tag">分级：${esc(media.certification)}</span>
+                        <a href="${doubanLink}" target="_blank" class="douban-btn" title="在豆瓣中搜索">
                             <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#00b51d"/><path d="M11 6.5h2v1h-2v-1zm4 1h-6v1h6v-1zm-6 3h6v1h-6v-1zm1 4.5h-2.5v1h1v1.5h-1v1h4v-1h-1v-1.5h1.5l1.5-1.5v-1h-3.5v1h1.5l-1 1zm-3-3v1h8v-1h-8z" fill="#fff"/></svg>
                             豆瓣搜索
                         </a>
                     </div>
                     <div class="runtime-panel">
-                        <span class="runtime-label">官方核定原始时长</span>
-                        ${movie.hasRuntime ? `
-                        <span class="runtime-readout">${movie.runtimeHours}h ${String(movie.runtimeRemainMinutes).padStart(2,'0')}m</span>
-                        <span class="runtime-sub">${movie.runtimeMinutes} min</span>
+                        <span class="runtime-label">${isTV ? '官方核定单集时长' : '官方核定原始时长'}</span>
+                        ${media.hasRuntime ? `
+                        <span class="runtime-readout">${media.runtimeHours}h ${String(media.runtimeRemainMinutes).padStart(2,'0')}m</span>
+                        <span class="runtime-sub">${media.runtimeMinutes} min${isTV ? ' / 集' : ''}</span>
                         ` : `<span class="runtime-readout" style="font-size:18px; color:#7fa8c9;">暂无数据</span>`}
                     </div>
-                    <div class="overview"><strong>剧情大纲：</strong><br>${movie.overview}</div>
+                    <div class="overview"><strong>剧情大纲：</strong>${media.overviewIsEnglish ? ' <small style="opacity:.7;">（暂无中文简介，以下为英文）</small>' : ''}<br>${esc(media.overview)}</div>
                 </div>
             </div>
             <div class="cast-header-title">🎬 主要演职人员</div>
-            <div class="cast-list" id="castList">${movie.cast.map(p => `
+            <div class="cast-list" id="castList">${media.cast.map(p => `
                 <div class="cast-item">
                     <a href="https://www.themoviedb.org/person/${p.id}?language=zh-CN" target="_blank">
-                       <img src="${p.profilePath ? 'https://image.tmdb.org/t/p/w185'+p.profilePath : './default-avatar.jpg'}" 
-     class="cast-img" 
-     onerror="this.onerror=null; this.src='./default-avatar.jpg';">
-                        <span class="cast-name">${p.name}</span>
-                        <span class="cast-role">${p.character}</span>
+                       <img src="${p.profilePath ? 'https://image.tmdb.org/t/p/w185'+p.profilePath : './default-avatar.jpg'}"
+     class="cast-img"
+     onerror="imgFallback(this)">
+                        <span class="cast-name">${esc(p.name)}</span>
+                        <span class="cast-role">${esc(p.character)}</span>
                     </a>
                 </div>
             `).join('')}</div>
-            ${movie.cast.length > 6 ? `<div class="cast-toggle"><button id="castToggleBtn" onclick="toggleCastList()">查看全部 ${movie.cast.length} 位演职人员 ▼</button></div>` : ''}
+            ${media.cast.length > 6 ? `<div class="cast-toggle"><button id="castToggleBtn" onclick="toggleCastList()">查看全部 ${media.cast.length} 位演职人员 ▼</button></div>` : ''}
         `;
     }
 
-    async function showMovieDetail(movieId) {
+    async function showMediaDetail(type, id) {
+        const seq = ++app.seq;
         const resultDiv = document.getElementById('result');
         resultDiv.innerHTML = "<div style='text-align:center; padding:40px;'>✨ 正在加载详情...</div>";
 
         try {
-            const movie = await fetchMovieDetail(movieId);
-            app.selectedMovie = movie;
-            renderMovieDetail(movie);
+            const media = await fetchMediaDetail(type, id);
+            if (seq !== app.seq) return;
+            app.selectedMedia = media;
+            renderMediaDetail(media);
         } catch (err) {
-            resultDiv.innerHTML = `⚠️ 详情加载失败`;
+            if (seq === app.seq) resultDiv.innerHTML = errorHtml(err, '详情加载失败');
         }
     }
 
-    document.getElementById('movieName').onkeypress = (e) => { if (e.keyCode === 13) searchMovie(); };
+    // 回车搜索；中文输入法选词时按的回车（isComposing / keyCode 229）不算
+    document.getElementById('movieName').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) searchMedia();
+    });
 </script>
 </body>
 </html>
